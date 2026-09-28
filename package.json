@@ -1,0 +1,11 @@
+{
+  "name": "pit-controller-sim",
+  "version": "1.0.0",
+  "description": "Open-pit mine dispatch simulation for assessing pit controller competency and identifying new pit controllers.",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "npx http-server -p 8080 -c-1 ."
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,300 @@
+/*
+ * Canvas renderer for the mine map: pit benches, haul roads, dumps,
+ * loading units, trucks and exclusion zones.
+ */
+(function (root) {
+  'use strict';
+  const PitUI = (root.PitUI = root.PitUI || {});
+  const P = root.PitSim;
+
+  const COLORS = {
+    ground: '#141a1f',
+    benches: ['#1a1d1e', '#1d1f1e', '#201f1c', '#23201b', '#26211a'],
+    benchLine: 'rgba(255,255,255,0.05)',
+    road: '#3b3834',
+    roadEdge: '#2b2926',
+    roadLine: 'rgba(242,169,59,0.25)',
+    label: '#b8c3cc',
+    hg: '#f2b134', lg: '#d9793a', waste: '#9a8f82', empty: '#62b6ff', down: '#ff5f5f',
+    ok: '#3ecf8e', warn: '#f2c14e', danger: '#ff5f5f', info: '#62b6ff', evac: '#c084fc'
+  };
+
+  const SHOVEL_STATUS_COLOR = {
+    operating: COLORS.ok, down: COLORS.danger, tramming: COLORS.warn, standby: COLORS.warn, evacuated: COLORS.evac
+  };
+
+  function truckColor(tr) {
+    if (!tr.load) return null;
+    if (tr.load.material === 'waste') return COLORS.waste;
+    return tr.load.source === 'S1' ? COLORS.hg : COLORS.lg;
+  }
+
+  function createMap(canvas, sim) {
+    const ctx = canvas.getContext('2d');
+    let scale = 1;
+    let ox = 0;
+    let oy = 0;
+    let dpr = 1;
+    let truckScreen = [];
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      dpr = root.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      const pad = 16;
+      scale = Math.min((rect.width - pad * 2) / P.MAP_WIDTH, (rect.height - pad * 2) / P.MAP_HEIGHT);
+      ox = (rect.width - P.MAP_WIDTH * scale) / 2;
+      oy = (rect.height - P.MAP_HEIGHT * scale) / 2;
+    }
+
+    const sx = (x) => ox + x * scale;
+    const sy = (y) => oy + y * scale;
+
+    function drawPit() {
+      const cx = 1550;
+      const cy = 1520;
+      const rx = 1380;
+      const ry = 880;
+      const factors = [1, 0.84, 0.68, 0.52, 0.36];
+      factors.forEach((f, i) => {
+        ctx.beginPath();
+        for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 36) {
+          const wobble = 1 + 0.035 * Math.sin(a * 3 + i) + 0.02 * Math.cos(a * 5);
+          const x = cx + Math.cos(a) * rx * f * wobble;
+          const y = cy + Math.sin(a) * ry * f * wobble + (1 - f) * 260;
+          if (a === 0) ctx.moveTo(sx(x), sy(y));
+          else ctx.lineTo(sx(x), sy(y));
+        }
+        ctx.closePath();
+        ctx.fillStyle = COLORS.benches[i];
+        ctx.fill();
+        ctx.strokeStyle = COLORS.benchLine;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+    }
+
+    function drawRoads() {
+      const w = Math.max(4, 26 * scale);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const pass of [0, 1, 2]) {
+        for (const [a, b] of P.EDGES) {
+          const na = P.NODES[a];
+          const nb = P.NODES[b];
+          ctx.beginPath();
+          ctx.moveTo(sx(na.x), sy(na.y));
+          ctx.lineTo(sx(nb.x), sy(nb.y));
+          if (pass === 0) { ctx.strokeStyle = COLORS.roadEdge; ctx.lineWidth = w + 3; ctx.setLineDash([]); }
+          if (pass === 1) { ctx.strokeStyle = COLORS.road; ctx.lineWidth = w; ctx.setLineDash([]); }
+          if (pass === 2) { ctx.strokeStyle = COLORS.roadLine; ctx.lineWidth = 1; ctx.setLineDash([6, 8]); }
+          ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      // Ramp label
+      const rm = P.NODES.RM;
+      text('RAMP', sx(rm.x) + 14, sy(rm.y), COLORS.label, 10, 'left', 0.6);
+    }
+
+    function text(str, x, y, color, size, align, alpha) {
+      ctx.globalAlpha = alpha == null ? 1 : alpha;
+      ctx.fillStyle = color;
+      ctx.font = '600 ' + size + 'px system-ui, sans-serif';
+      ctx.textAlign = align || 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(str, x, y);
+      ctx.globalAlpha = 1;
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function drawZones(state) {
+      for (const z of state.zones) {
+        const isBlast = z.kind === 'blast';
+        const color = isBlast ? COLORS.danger : COLORS.evac;
+        const armed = !isBlast || state.blast.status !== 'scheduled';
+        ctx.beginPath();
+        ctx.arc(sx(z.x), sy(z.y), z.r * scale, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = armed ? 0.16 : 0.07;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([8, 6]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        let label = isBlast ? 'BLAST ZONE' : 'GEOTECH EXCLUSION';
+        if (isBlast) {
+          const st = state.blast.status;
+          label += st === 'scheduled' ? ' — clear by ' + sim.clock(state.blast.guardAt)
+            : st === 'guard' ? ' — GUARD PERIOD' : st === 'confirmed' ? ' — ALL CLEAR GIVEN' : ' — FIRED / NO ENTRY';
+        }
+        text(label, sx(z.x), sy(z.y - z.r) - 10, color, 11);
+      }
+    }
+
+    function drawDumps(state) {
+      for (const d of Object.values(state.dumps)) {
+        const n = P.NODES[d.id];
+        const w = Math.max(40, 150 * scale);
+        const h = Math.max(22, 80 * scale);
+        const x = sx(n.x) - w / 2;
+        const y = sy(n.y) - h / 2;
+        roundRect(x, y, w, h, 5);
+        ctx.fillStyle = d.status === 'operating' ? '#23303a' : '#3a1f22';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = d.status === 'operating' ? (d.accepts === 'ore' ? COLORS.hg : COLORS.waste) : COLORS.danger;
+        ctx.stroke();
+        text(d.id === 'CR' ? 'CRUSHER' : d.id === 'ROM' ? 'ROM' : 'WASTE', sx(n.x), sy(n.y) - (d.queue.length ? 5 : 0), '#e2e8ee', 11);
+        if (d.queue.length) text('queue ' + d.queue.length, sx(n.x), sy(n.y) + 8, COLORS.warn, 9.5);
+        if (d.status !== 'operating') text('DOWN', sx(n.x), y - 9, COLORS.danger, 11);
+      }
+      const ws = P.NODES.WS;
+      const w = Math.max(50, 190 * scale);
+      const h = Math.max(20, 70 * scale);
+      roundRect(sx(ws.x) - w / 2, sy(ws.y) - h / 2, w, h, 5);
+      ctx.fillStyle = '#1f2830';
+      ctx.fill();
+      ctx.strokeStyle = COLORS.info;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      text('WORKSHOP / FUEL', sx(ws.x), sy(ws.y), COLORS.label, 10);
+    }
+
+    function drawShovels(state) {
+      for (const s of Object.values(state.shovels)) {
+        const r = Math.max(9, 42 * scale);
+        const x = sx(s.x);
+        const y = sy(s.y);
+        if (s.status === 'tramming' || s.status === 'standby') {
+          ctx.beginPath();
+          ctx.setLineDash([3, 4]);
+          ctx.moveTo(sx(s.home.x), sy(s.home.y));
+          ctx.lineTo(x, y);
+          ctx.strokeStyle = COLORS.warn;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r, y);
+        ctx.closePath();
+        ctx.fillStyle = s.material === 'waste' ? '#4a443d' : s.grade > 1.5 ? '#5a4213' : '#523017';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = SHOVEL_STATUS_COLOR[s.status] || COLORS.ok;
+        ctx.stroke();
+        text(s.id, x, y, '#fff', 11);
+        const sub = s.material === 'waste' ? 'Waste' : (s.grade > 1.5 ? 'HG ' : 'LG ') + s.grade.toFixed(1) + '%';
+        text(sub, x, y + r + 10, COLORS.label, 10);
+        if (s.status !== 'operating') {
+          text(s.status.toUpperCase(), x, y - r - 10, SHOVEL_STATUS_COLOR[s.status], 10.5);
+        }
+      }
+    }
+
+    function drawTrucks(state, selected) {
+      const r = Math.max(5, 22 * scale);
+      const stationary = {};
+      for (const tr of state.trucks) {
+        if (!tr.moving && tr.at) (stationary[tr.at] = stationary[tr.at] || []).push(tr);
+      }
+      const pos = {};
+      for (const tr of state.trucks) pos[tr.id] = { x: sx(tr.x), y: sy(tr.y) };
+      for (const node of Object.keys(stationary)) {
+        const list = stationary[node];
+        const n = P.NODES[node];
+        const ring = Math.max(18, 78 * scale);
+        list.forEach((tr, i) => {
+          const a = -Math.PI / 2 + (i / Math.max(6, list.length)) * Math.PI * 2 + (node === 'WS' ? Math.PI / 2 : 0);
+          pos[tr.id] = { x: sx(n.x) + Math.cos(a) * ring, y: sy(n.y) + Math.sin(a) * ring };
+        });
+      }
+      truckScreen = [];
+      for (const tr of state.trucks) {
+        const p = pos[tr.id];
+        truckScreen.push({ id: tr.id, x: p.x, y: p.y });
+        const fill = truckColor(tr);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        if (tr.hold) {
+          ctx.fillStyle = COLORS.down;
+          ctx.fill();
+        } else if (fill) {
+          ctx.fillStyle = fill;
+          ctx.fill();
+        } else {
+          ctx.fillStyle = '#10161b';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = COLORS.empty;
+          ctx.stroke();
+        }
+        if (tr.fuelLow) {
+          ctx.beginPath();
+          ctx.arc(p.x + r * 0.9, p.y - r * 0.9, Math.max(2.5, r * 0.35), 0, Math.PI * 2);
+          ctx.fillStyle = COLORS.warn;
+          ctx.fill();
+        }
+        if (selected.has(tr.id)) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+        }
+        if (scale > 0.18 || selected.has(tr.id)) {
+          text(tr.id.slice(1), p.x, p.y + r + 8, selected.has(tr.id) ? '#fff' : COLORS.label, 9.5);
+        }
+      }
+    }
+
+    function render(selected) {
+      const state = sim.state;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      ctx.fillStyle = COLORS.ground;
+      ctx.fillRect(0, 0, w, h);
+      drawPit();
+      drawRoads();
+      drawZones(state);
+      drawDumps(state);
+      drawShovels(state);
+      drawTrucks(state, selected || new Set());
+    }
+
+    function pick(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      let best = null;
+      let bestD = 16;
+      for (const t of truckScreen) {
+        const d = Math.hypot(t.x - x, t.y - y);
+        if (d < bestD) { best = t.id; bestD = d; }
+      }
+      return best;
+    }
+
+    resize();
+    return { render, resize, pick };
+  }
+
+  PitUI.createMap = createMap;
+})(typeof self !== 'undefined' ? self : this);

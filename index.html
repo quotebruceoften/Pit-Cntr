@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pit Controller Simulator</title>
+  <meta name="description" content="Open-pit mine dispatch simulation for assessing pit controller competency.">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Home -------------------------------------------------------------->
+  <section id="screen-home" class="screen active">
+    <div class="home-wrap">
+      <header class="home-head">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 48 48" width="48" height="48"><path d="M4 38h40L32 14l-6 10-5-7z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="36" cy="34" r="3" fill="currentColor"/><circle cx="14" cy="34" r="3" fill="currentColor"/></svg>
+        </div>
+        <div>
+          <h1>Pit Controller Simulator</h1>
+          <p class="lede">A realistic open-pit dispatch shift for assessing pit controller competency and finding new pit controllers.</p>
+        </div>
+      </header>
+
+      <div class="home-grid">
+        <button class="home-card primary" data-go="setup">
+          <span class="hc-title">Start assessment</span>
+          <span class="hc-body">Register a candidate and run an assessed shift. Results are saved for the assessor.</span>
+        </button>
+        <button class="home-card" data-go="practice">
+          <span class="hc-title">Practice shift</span>
+          <span class="hc-body">A short warm-up with pause, speed control and instant feedback. Not ranked.</span>
+        </button>
+        <button class="home-card" data-go="assessor">
+          <span class="hc-title">Assessor dashboard</span>
+          <span class="hc-body">Compare candidates, review debriefs, export results.</span>
+        </button>
+      </div>
+
+      <div class="home-info">
+        <h2>What is assessed</h2>
+        <ul class="comp-list" id="home-competencies"></ul>
+        <p class="muted small">Recommended sequence for a candidate: Practice shift → Day shift → Blast day → Night shift. Each assessed shift takes about 12 minutes.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Candidate setup -------------------------------------------------------->
+  <section id="screen-setup" class="screen">
+    <div class="form-wrap">
+      <button class="link-btn" data-go="home">← Back</button>
+      <h1>New assessment</h1>
+      <form id="setup-form" autocomplete="off">
+        <div class="field">
+          <label for="cand-name">Candidate name</label>
+          <input id="cand-name" name="name" required maxlength="80">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cand-ref">Employee / applicant ID <span class="muted">(optional)</span></label>
+            <input id="cand-ref" name="ref" maxlength="60">
+          </div>
+          <div class="field">
+            <label for="cand-years">Years in mining</label>
+            <input id="cand-years" name="years" type="number" min="0" max="60" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label for="cand-role">Current role</label>
+          <select id="cand-role" name="role">
+            <option>Haul truck operator</option>
+            <option>Loader / excavator operator</option>
+            <option>Ancillary equipment operator</option>
+            <option>Pit controller / dispatcher</option>
+            <option>Supervisor / leading hand</option>
+            <option>Mining engineer / technical</option>
+            <option>No mining experience</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <fieldset class="field">
+          <legend>Scenario</legend>
+          <div id="scenario-options" class="scenario-options"></div>
+        </fieldset>
+        <button type="submit" class="btn btn-primary">Continue to briefing</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Briefing ------------------------------------------------------------->
+  <section id="screen-briefing" class="screen">
+    <div class="brief-wrap">
+      <button class="link-btn" data-go="home">← Cancel</button>
+      <p class="eyebrow" id="brief-mode"></p>
+      <h1 id="brief-title"></h1>
+      <p class="lede" id="brief-summary"></p>
+      <div class="brief-grid">
+        <div class="panel">
+          <h2>Shift briefing</h2>
+          <ul id="brief-points" class="bullets"></ul>
+          <h2>Your job</h2>
+          <ul class="bullets">
+            <li><strong>Dispatch the fleet.</strong> Each truck has a circuit: a loading unit (S1, S2, S3) and a dump (Crusher, ROM stockpile, Waste dump). Change it in the fleet table, or select several trucks and use the bulk bar.</li>
+            <li><strong>Ore goes to the crusher</strong> (or the ROM stockpile if the crusher is down). <strong>Waste goes to the waste dump.</strong> A loaded truck finishes its current load before a new circuit applies; changing only the dump redirects the load on board.</li>
+            <li><strong>Balance the crusher blend</strong> by mixing high-grade (S1) and low-grade (S2) ore.</li>
+            <li><strong>Answer radio calls</strong> promptly — each has a countdown. Speed and quality both count.</li>
+            <li><strong>Keep people safe.</strong> Safety failures outweigh production. A critical safety failure ends any chance of a recommendation.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h2>Map legend</h2>
+          <ul class="legend">
+            <li><span class="sw sw-empty"></span>Empty truck</li>
+            <li><span class="sw sw-hg"></span>Loaded — high-grade ore</li>
+            <li><span class="sw sw-lg"></span>Loaded — low-grade ore</li>
+            <li><span class="sw sw-waste"></span>Loaded — waste</li>
+            <li><span class="sw sw-down"></span>Truck stopped (breakdown / relief)</li>
+            <li><span class="sw sw-zone"></span>Exclusion zone (blast / geotech)</li>
+          </ul>
+          <h2>Assessment rules</h2>
+          <ul class="bullets" id="brief-rules"></ul>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-lg" id="btn-start-shift">Start shift</button>
+    </div>
+  </section>
+
+  <!-- Simulation console ---------------------------------------------------->
+  <section id="screen-sim" class="screen">
+    <div class="console">
+      <header class="topbar">
+        <div class="tb-block tb-title">
+          <span class="tb-scenario" id="tb-scenario"></span>
+          <span class="tb-candidate" id="tb-candidate"></span>
+        </div>
+        <div class="tb-block">
+          <span class="tb-label">Time</span>
+          <span class="tb-clock" id="tb-clock">06:00</span>
+          <span class="tb-sub" id="tb-left"></span>
+        </div>
+        <div class="tb-block tb-kpi">
+          <span class="tb-label">Ore mined</span>
+          <div class="kpi-bar"><div class="kpi-fill ore" id="kpi-ore"></div></div>
+          <span class="tb-sub" id="kpi-ore-text"></span>
+        </div>
+        <div class="tb-block tb-kpi">
+          <span class="tb-label">Waste moved</span>
+          <div class="kpi-bar"><div class="kpi-fill waste" id="kpi-waste"></div></div>
+          <span class="tb-sub" id="kpi-waste-text"></span>
+        </div>
+        <div class="tb-block">
+          <span class="tb-label">Crusher blend</span>
+          <span class="tb-blend" id="kpi-blend">—</span>
+          <span class="tb-sub" id="kpi-blend-spec"></span>
+        </div>
+        <div class="tb-block">
+          <span class="tb-label">Incidents</span>
+          <span class="tb-incidents" id="kpi-incidents">0</span>
+        </div>
+        <div class="tb-block tb-controls">
+          <div id="speed-controls" class="speed-controls" hidden>
+            <button class="btn btn-sm" id="btn-pause" aria-label="Pause">❚❚</button>
+            <select id="speed-select" aria-label="Simulation speed">
+              <option value="5">5×</option>
+              <option value="15" selected>15×</option>
+              <option value="30">30×</option>
+              <option value="60">60×</option>
+            </select>
+          </div>
+          <button class="btn btn-sm" id="btn-mute" aria-pressed="false" title="Toggle radio sound">🔔</button>
+          <button class="btn btn-sm btn-danger-outline" id="btn-end">End shift</button>
+        </div>
+      </header>
+
+      <div class="console-main">
+        <div class="map-col">
+          <div class="map-wrap" id="map-wrap">
+            <canvas id="map" aria-label="Mine map"></canvas>
+            <div class="map-hint">Click a truck to select it</div>
+          </div>
+          <div class="bottom-row">
+            <div class="panel equip" id="equipment"></div>
+          </div>
+        </div>
+
+        <aside class="side-col comms-col" aria-label="Radio and blast">
+          <h3>Radio</h3>
+          <div id="radio-panel" class="radio-panel"></div>
+          <div id="radio-empty" class="radio-empty">No calls waiting. Keep an eye on the fleet.</div>
+          <div id="blast-panel" class="panel blast-panel" hidden></div>
+          <div class="panel log">
+            <h3>Event log</h3>
+            <ol id="event-log" class="event-log"></ol>
+          </div>
+        </aside>
+        <aside class="side-col" aria-label="Fleet">
+          <div class="panel fleet">
+            <div class="fleet-head">
+              <h3>Fleet</h3>
+              <span class="muted small" id="fleet-summary"></span>
+            </div>
+            <div class="bulk-bar" id="bulk-bar">
+              <span id="bulk-count">0 selected</span>
+              <select id="bulk-shovel" aria-label="Bulk loading unit"></select>
+              <select id="bulk-dump" aria-label="Bulk dump"></select>
+              <button class="btn btn-sm btn-primary" id="bulk-apply">Apply</button>
+            </div>
+            <div class="fleet-scroll">
+              <table class="fleet-table">
+                <thead>
+                  <tr><th><input type="checkbox" id="fleet-all" aria-label="Select all trucks"></th><th>Truck</th><th>Status</th><th>Load</th><th>Circuit</th><th></th></tr>
+                </thead>
+                <tbody id="fleet-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <div id="toast-host" class="toast-host" aria-live="polite"></div>
+  </section>
+
+  <!-- Report ---------------------------------------------------------------->
+  <section id="screen-report" class="screen">
+    <div class="report-wrap">
+      <div class="report-actions no-print">
+        <button class="link-btn" id="report-back">← Home</button>
+        <div class="spacer"></div>
+        <button class="btn" id="report-print">Print / save PDF</button>
+      </div>
+      <div id="report"></div>
+    </div>
+  </section>
+
+  <!-- Assessor ---------------------------------------------------------------->
+  <section id="screen-assessor" class="screen">
+    <div class="assessor-wrap">
+      <div class="report-actions">
+        <button class="link-btn" data-go="home">← Home</button>
+        <div class="spacer"></div>
+      </div>
+
+      <div id="assessor-lock" class="panel lock-panel">
+        <h1>Assessor dashboard</h1>
+        <p class="muted">Enter the assessor PIN. The default PIN is <code>1234</code> — change it under Settings.</p>
+        <form id="pin-form" class="pin-form">
+          <input id="pin-input" type="password" inputmode="numeric" autocomplete="off" aria-label="Assessor PIN">
+          <button class="btn btn-primary" type="submit">Unlock</button>
+        </form>
+        <p class="error" id="pin-error" hidden>Incorrect PIN.</p>
+      </div>
+
+      <div id="assessor-body" hidden>
+        <h1>Assessor dashboard</h1>
+        <div class="tabs" role="tablist">
+          <button role="tab" class="tab active" data-tab="candidates">Candidates</button>
+          <button role="tab" class="tab" data-tab="attempts">All attempts</button>
+          <button role="tab" class="tab" data-tab="settings">Settings &amp; data</button>
+        </div>
+
+        <div class="tab-panel active" data-panel="candidates">
+          <p class="muted small">One row per candidate, combining their assessed (non-practice) shifts. Any critical safety failure makes a candidate not suitable at this time.</p>
+          <div class="table-scroll"><table class="data-table" id="cand-table"></table></div>
+        </div>
+
+        <div class="tab-panel" data-panel="attempts">
+          <div class="filter-row">
+            <label>Candidate <input id="attempt-search" type="search" placeholder="Name or ID"></label>
+            <label>Scenario <select id="attempt-filter"></select></label>
+            <label><input type="checkbox" id="attempt-practice"> Include practice</label>
+          </div>
+          <div class="table-scroll"><table class="data-table" id="attempt-table"></table></div>
+        </div>
+
+        <div class="tab-panel" data-panel="settings">
+          <div class="settings-grid">
+            <div class="panel">
+              <h2>Candidate experience</h2>
+              <label class="check"><input type="checkbox" id="set-show-results"> Show the full debrief to candidates at the end of an assessed shift</label>
+              <p class="muted small">When off, candidates see a completion message and results are only visible here.</p>
+              <h2>Assessor PIN</h2>
+              <form id="pin-change" class="pin-form">
+                <input id="pin-new" type="password" inputmode="numeric" minlength="4" autocomplete="new-password" aria-label="New PIN" placeholder="New PIN">
+                <button class="btn" type="submit">Change PIN</button>
+              </form>
+              <p class="muted small">The PIN keeps casual users out of this screen on a shared PC. It is not strong security — results live in this browser's storage.</p>
+            </div>
+            <div class="panel">
+              <h2>Data</h2>
+              <p class="muted small">Results are stored in this browser only. Export regularly, and import files from other assessment PCs to compare everyone in one place.</p>
+              <div class="btn-row">
+                <button class="btn" id="export-csv">Export CSV</button>
+                <button class="btn" id="export-json">Export JSON (full)</button>
+                <label class="btn" for="import-json">Import JSON</label>
+                <input type="file" id="import-json" accept="application/json,.json" hidden>
+              </div>
+              <p class="muted small" id="import-status"></p>
+              <h2>Danger zone</h2>
+              <button class="btn btn-danger-outline" id="clear-all">Delete all results</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="js/sim/mine.js"></script>
+  <script src="js/sim/scenarios.js"></script>
+  <script src="js/sim/engine.js"></script>
+  <script src="js/sim/scoring.js"></script>
+  <script src="js/ui/storage.js"></script>
+  <script src="js/ui/map.js"></script>
+  <script src="js/ui/report.js"></script>
+  <script src="js/ui/console.js"></script>
+  <script src="js/ui/app.js"></script>
+</body>
+</html>

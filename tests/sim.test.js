@@ -3,14 +3,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const mine = require('../js/sim/mine.js');
-const { createSim } = require('../js/sim/engine.js');
-const { SCENARIOS } = require('../js/sim/scenarios.js');
+const { createMine } = require('../js/sim/mine.js');
+const engine = require('../js/sim/engine.js');
+const { SITES } = require('../js/sim/library.js');
 const { score } = require('../js/sim/scoring.js');
 const bots = require('./bots.js');
+const demo = require('../js/sites/demo.js');
+require('../js/sites/navachab.js');
 
-const scenario = (id) => SCENARIOS.find((s) => s.id === id);
-const assessed = SCENARIOS.filter((s) => !s.practice);
+// Focused engine tests run on the demo site.
+const createSim = (sc, opts) => engine.createSim(demo, sc, opts);
+const scenario = (id) => demo.scenarios.find((s) => s.id === id);
 
 function runUntil(sim, minutes, control) {
   while (!sim.state.finished && sim.state.t < minutes * 60) {
@@ -31,13 +34,14 @@ function mini(overrides) {
   }, overrides);
 }
 
-test('road network routes every loading unit to every dump', () => {
+for (const site of SITES) test(site.id + ': road network routes every loading unit to every dump', () => {
+  const mine = createMine(site.layout);
   for (const s of mine.SHOVELS) {
     for (const d of mine.DUMPS) {
       const path = mine.shortestPath(s.id, d.id);
       assert.equal(path[0], s.id);
       assert.equal(path[path.length - 1], d.id);
-      assert.ok(mine.routeLength(path) > 1000, 'haul should be over 1 km');
+      assert.ok(mine.routeLength(path) > 500, 'haul should be over 500 m');
       // Loaded hauls climb out of the pit so take longer than the empty return.
       assert.ok(mine.travelSeconds(path, true) > mine.travelSeconds(path.slice().reverse(), false));
     }
@@ -45,40 +49,64 @@ test('road network routes every loading unit to every dump', () => {
 });
 
 test('simulation is deterministic for a given seed and set of actions', () => {
-  const a = bots.run(scenario('day'), bots.expertController, { seed: 7 });
-  const b = bots.run(scenario('day'), bots.expertController, { seed: 7 });
+  const a = bots.run(demo, scenario('day'), bots.expertController, { seed: 7 });
+  const b = bots.run(demo, scenario('day'), bots.expertController, { seed: 7 });
   assert.deepEqual(a.summary.totals, b.summary.totals);
   assert.equal(a.result.overall, b.result.overall);
 });
 
-for (const sc of assessed) {
-  test(sc.id + ': expert controller is recommended with no safety violations', () => {
-    const { summary, result } = bots.run(sc, bots.expertController);
-    assert.deepEqual(summary.violations.filter((v) => v.category === 'safety'), []);
-    assert.equal(result.recommendation.band, 'recommended', JSON.stringify(result.competencies));
-    assert.ok(result.overall >= 85, 'overall ' + result.overall);
-  });
+for (const site of SITES) {
+  const assessed = site.scenarios.filter((s) => !s.practice);
+  for (const sc of assessed) {
+    const name = site.id + '/' + sc.id;
+    test(name + ': expert controller is recommended with no safety violations', () => {
+      const { summary, result } = bots.run(site, sc, bots.expertController);
+      assert.deepEqual(summary.violations.filter((v) => v.category === 'safety'), []);
+      assert.equal(result.recommendation.band, 'recommended', JSON.stringify(result.competencies));
+      assert.ok(result.overall >= 85, 'overall ' + result.overall);
+    });
 
-  test(sc.id + ': doing nothing is never recommended', () => {
-    const { result } = bots.run(sc, null);
-    assert.equal(result.recommendation.band, 'not-suitable', 'overall ' + result.overall);
-    assert.equal(result.competencies.decisions, 0);
-  });
+    test(name + ': doing nothing is never recommended', () => {
+      const { result } = bots.run(site, sc, null);
+      assert.equal(result.recommendation.band, 'not-suitable', 'overall ' + result.overall);
+      assert.equal(result.competencies.decisions, 0);
+    });
 
-  test(sc.id + ': reckless controller fails on safety', () => {
-    const { result } = bots.run(sc, bots.recklessController);
-    assert.ok(result.competencies.safety <= 40, 'safety ' + result.competencies.safety);
-    assert.equal(result.recommendation.band, 'not-suitable');
+    test(name + ': reckless controller fails on safety', () => {
+      const { result } = bots.run(site, sc, bots.recklessController);
+      assert.ok(result.competencies.safety <= 40, 'safety ' + result.competencies.safety);
+      assert.equal(result.recommendation.band, 'not-suitable');
+    });
+
+    test(name + ': expert clearly outscores a passive controller', () => {
+      const good = bots.run(site, sc, bots.expertController).result.overall;
+      const idle = bots.run(site, sc, null).result.overall;
+      assert.ok(good - idle >= 30, good + ' vs ' + idle);
+    });
+  }
+
+  test(site.id + ': practice scenario exists and every scenario only references its own equipment', () => {
+    assert.ok(site.scenarios.some((s) => s.practice));
+    const mine = createMine(site.layout);
+    const units = new Set(mine.SHOVELS.map((x) => x.id).concat(['PARK']));
+    const dumps = new Set(mine.DUMPS.map((x) => x.id));
+    for (const sc of site.scenarios) {
+      const trucks = new Set(sc.fleet.map((f) => f.id));
+      for (const f of sc.fleet) {
+        assert.ok(units.has(f.shovel), sc.id + ' fleet uses unknown unit ' + f.shovel);
+        assert.ok(dumps.has(f.dump), sc.id + ' fleet uses unknown dump ' + f.dump);
+      }
+      for (const ev of sc.events) {
+        if (ev.shovel) assert.ok(units.has(ev.shovel), sc.id + ' event uses unknown unit ' + ev.shovel);
+        if (ev.truck) assert.ok(trucks.has(ev.truck), sc.id + ' event uses unknown truck ' + ev.truck);
+        for (const o of ev.options || []) for (const e of o.effects || []) {
+          if (e.truck) assert.ok(trucks.has(e.truck), sc.id + ' radio effect uses unknown truck ' + e.truck);
+          if (e.shovel) assert.ok(units.has(e.shovel), sc.id + ' radio effect uses unknown unit ' + e.shovel);
+        }
+      }
+    }
   });
 }
-
-test('expert clearly outscores a passive controller in every scenario', () => {
-  for (const sc of assessed) {
-    const good = bots.run(sc, bots.expertController).result.overall;
-    const idle = bots.run(sc, null).result.overall;
-    assert.ok(good - idle >= 30, sc.id + ': ' + good + ' vs ' + idle);
-  }
-});
 
 test('reassigning a loaded truck lets it finish its current load to the original dump', () => {
   const sim = createSim(mini(), { seed: 3 });

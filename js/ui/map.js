@@ -5,7 +5,6 @@
 (function (root) {
   'use strict';
   const PitUI = (root.PitUI = root.PitUI || {});
-  const P = root.PitSim;
 
   const COLORS = {
     ground: '#141a1f',
@@ -15,7 +14,7 @@
     roadEdge: '#2b2926',
     roadLine: 'rgba(242,169,59,0.25)',
     label: '#b8c3cc',
-    hg: '#f2b134', lg: '#d9793a', waste: '#9a8f82', empty: '#62b6ff', down: '#ff5f5f',
+    hg: '#f2b134', mg: '#e3a13a', lg: '#d9793a', waste: '#9a8f82', empty: '#62b6ff', down: '#ff5f5f',
     ok: '#3ecf8e', warn: '#f2c14e', danger: '#ff5f5f', info: '#62b6ff', evac: '#c084fc'
   };
 
@@ -23,14 +22,10 @@
     operating: COLORS.ok, down: COLORS.danger, tramming: COLORS.warn, standby: COLORS.warn, evacuated: COLORS.evac
   };
 
-  function truckColor(tr) {
-    if (!tr.load) return null;
-    if (tr.load.material === 'waste') return COLORS.waste;
-    return tr.load.source === 'S1' ? COLORS.hg : COLORS.lg;
-  }
-
-  function createMap(canvas, sim) {
+  function createMap(canvas, sim, view) {
+    const P = sim.mine;
     const ctx = canvas.getContext('2d');
+    const truckColor = (tr) => (tr.load ? COLORS[view.loadClass(tr.load)] : null);
     let scale = 1;
     let ox = 0;
     let oy = 0;
@@ -51,28 +46,29 @@
     const sx = (x) => ox + x * scale;
     const sy = (y) => oy + y * scale;
 
-    function drawPit() {
-      const cx = 1550;
-      const cy = 1520;
-      const rx = 1380;
-      const ry = 880;
+    // Pits are drawn as nested, slightly irregular benches.
+    function drawPits() {
       const factors = [1, 0.84, 0.68, 0.52, 0.36];
-      factors.forEach((f, i) => {
-        ctx.beginPath();
-        for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 36) {
-          const wobble = 1 + 0.035 * Math.sin(a * 3 + i) + 0.02 * Math.cos(a * 5);
-          const x = cx + Math.cos(a) * rx * f * wobble;
-          const y = cy + Math.sin(a) * ry * f * wobble + (1 - f) * 260;
-          if (a === 0) ctx.moveTo(sx(x), sy(y));
-          else ctx.lineTo(sx(x), sy(y));
-        }
-        ctx.closePath();
-        ctx.fillStyle = COLORS.benches[i];
-        ctx.fill();
-        ctx.strokeStyle = COLORS.benchLine;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      });
+      for (const pit of P.PITS) {
+        const shift = pit.floorShift != null ? pit.floorShift : 0;
+        factors.forEach((f, i) => {
+          ctx.beginPath();
+          for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 36) {
+            const wobble = 1 + 0.035 * Math.sin(a * 3 + i) + 0.02 * Math.cos(a * 5);
+            const x = pit.cx + Math.cos(a) * pit.rx * f * wobble;
+            const y = pit.cy + Math.sin(a) * pit.ry * f * wobble + (1 - f) * shift;
+            if (a === 0) ctx.moveTo(sx(x), sy(y));
+            else ctx.lineTo(sx(x), sy(y));
+          }
+          ctx.closePath();
+          ctx.fillStyle = COLORS.benches[i];
+          ctx.fill();
+          ctx.strokeStyle = COLORS.benchLine;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+        if (pit.label) text(pit.label, sx(pit.cx), sy(pit.cy + pit.ry * 0.93), COLORS.label, 10, 'center', 0.45);
+      }
     }
 
     function drawRoads() {
@@ -93,9 +89,12 @@
         }
       }
       ctx.setLineDash([]);
-      // Ramp label
-      const rm = P.NODES.RM;
-      text('RAMP', sx(rm.x) + 14, sy(rm.y), COLORS.label, 10, 'left', 0.6);
+      for (const [a, b, opts] of P.EDGES) {
+        if (!opts || !opts.ramp) continue;
+        const na = P.NODES[a];
+        const nb = P.NODES[b];
+        text('RAMP', sx((na.x + nb.x) / 2) + 14, sy((na.y + nb.y) / 2), COLORS.label, 9, 'left', 0.5);
+      }
     }
 
     function text(str, x, y, color, size, align, alpha) {
@@ -155,13 +154,13 @@
         ctx.fillStyle = d.status === 'operating' ? '#23303a' : '#3a1f22';
         ctx.fill();
         ctx.lineWidth = 2;
-        ctx.strokeStyle = d.status === 'operating' ? (d.accepts === 'ore' ? COLORS.hg : COLORS.waste) : COLORS.danger;
+        ctx.strokeStyle = d.status === 'operating' ? (d.role === 'waste' ? COLORS.waste : COLORS.hg) : COLORS.danger;
         ctx.stroke();
-        text(d.id === 'CR' ? 'CRUSHER' : d.id === 'ROM' ? 'ROM' : 'WASTE', sx(n.x), sy(n.y) - (d.queue.length ? 5 : 0), '#e2e8ee', 11);
+        text((d.short || d.name).toUpperCase(), sx(n.x), sy(n.y) - (d.queue.length ? 5 : 0), '#e2e8ee', 10.5);
         if (d.queue.length) text('queue ' + d.queue.length, sx(n.x), sy(n.y) + 8, COLORS.warn, 9.5);
         if (d.status !== 'operating') text('DOWN', sx(n.x), y - 9, COLORS.danger, 11);
       }
-      const ws = P.NODES.WS;
+      const ws = P.NODES[P.BASE];
       const w = Math.max(50, 190 * scale);
       const h = Math.max(20, 70 * scale);
       roundRect(sx(ws.x) - w / 2, sy(ws.y) - h / 2, w, h, 5);
@@ -194,13 +193,13 @@
         ctx.lineTo(x, y + r);
         ctx.lineTo(x - r, y);
         ctx.closePath();
-        ctx.fillStyle = s.material === 'waste' ? '#4a443d' : s.grade > 1.5 ? '#5a4213' : '#523017';
+        ctx.fillStyle = s.material === 'waste' ? '#4a443d' : view.oreClass(s.grade) === 'hg' ? '#5a4213' : '#523017';
         ctx.fill();
         ctx.lineWidth = 3;
         ctx.strokeStyle = SHOVEL_STATUS_COLOR[s.status] || COLORS.ok;
         ctx.stroke();
         text(s.id, x, y, '#fff', 11);
-        const sub = s.material === 'waste' ? 'Waste' : (s.grade > 1.5 ? 'HG ' : 'LG ') + s.grade.toFixed(1) + '%';
+        const sub = s.material === 'waste' ? 'Waste' : view.tag(s.id) + ' ' + view.grade(s.grade);
         text(sub, x, y + r + 10, COLORS.label, 10);
         if (s.status !== 'operating') {
           text(s.status.toUpperCase(), x, y - r - 10, SHOVEL_STATUS_COLOR[s.status], 10.5);
@@ -221,7 +220,7 @@
         const n = P.NODES[node];
         const ring = Math.max(18, 78 * scale);
         list.forEach((tr, i) => {
-          const a = -Math.PI / 2 + (i / Math.max(6, list.length)) * Math.PI * 2 + (node === 'WS' ? Math.PI / 2 : 0);
+          const a = -Math.PI / 2 + (i / Math.max(6, list.length)) * Math.PI * 2 + (node === P.BASE ? Math.PI / 2 : 0);
           pos[tr.id] = { x: sx(n.x) + Math.cos(a) * ring, y: sy(n.y) + Math.sin(a) * ring };
         });
       }
@@ -259,7 +258,7 @@
           ctx.stroke();
         }
         if (scale > 0.18 || selected.has(tr.id)) {
-          text(tr.id.slice(1), p.x, p.y + r + 8, selected.has(tr.id) ? '#fff' : COLORS.label, 9.5);
+          text(tr.id.replace(/^\D+/, ''), p.x, p.y + r + 8, selected.has(tr.id) ? '#fff' : COLORS.label, 9.5);
         }
       }
     }
@@ -271,7 +270,7 @@
       const h = canvas.height / dpr;
       ctx.fillStyle = COLORS.ground;
       ctx.fillRect(0, 0, w, h);
-      drawPit();
+      drawPits();
       drawRoads();
       drawZones(state);
       drawDumps(state);

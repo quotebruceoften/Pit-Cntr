@@ -1,6 +1,10 @@
 /*
- * Assessment scenarios. Every candidate taking the same scenario faces the
- * same scripted events at the same times, so results are comparable.
+ * Scenario building blocks shared by every site profile, plus the site
+ * registry. Site files (js/sites/*.js) combine these into scenarios using
+ * their own equipment names, locations and callsigns.
+ *
+ * Every candidate taking the same scenario faces the same scripted events at
+ * the same times, so results are comparable.
  *
  * Event times (`at`) are in minutes from the start of the shift.
  * Radio option ratings: best | ok | poor | unsafe.
@@ -15,12 +19,13 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  function fleet(plan, parked) {
+  // plan: [[loadingUnit, dump, truckCount], ...]; parked: truck ids starting parked.
+  function fleet(plan, parked, prefix) {
     const out = [];
     let n = 1;
     for (const [shovel, dump, count] of plan) {
       for (let i = 0; i < count; i++) {
-        out.push({ id: 'T' + String(n++).padStart(2, '0'), shovel, dump });
+        out.push({ id: (prefix || 'T') + String(n++).padStart(2, '0'), shovel, dump });
       }
     }
     for (const id of parked || []) {
@@ -59,7 +64,7 @@
         feedback: 'Fatigue is a critical risk. Stop the truck safely immediately and arrange relief; the lost production is the right trade-off.' },
       { text: 'Crib break is in 40 minutes — open the window, have some water and push through until then.', rating: 'unsafe', severity: 'major',
         effects: [{ type: 'flag', key: 'fatigueIgnored' }],
-        feedback: 'Micro-sleeps at the wheel of a 200 t truck can be fatal. Self-reported fatigue must never be pushed through.' },
+        feedback: 'Micro-sleeps at the wheel of a loaded haul truck can be fatal. Self-reported fatigue must never be pushed through.' },
       { text: 'Finish this load, then park at the go-line and we\'ll sort something out.', rating: 'poor',
         effects: [{ type: 'hold', truck, minutes: 30, reason: 'fatigue relief — fresh operator' }],
         feedback: 'Allows a fatigued operator to keep driving a loaded truck up the ramp — the highest-risk part of the cycle.' },
@@ -159,10 +164,10 @@
     timeoutText: 'Pit control did not respond to an urgent geotechnical alarm.'
   });
 
-  const nearMiss = (at, truck) => ({
+  const nearMiss = (at, truck, place) => ({
     at, type: 'radio', id: 'near-miss',
     from: truck + ' operator',
-    message: 'Pit control, ' + truck + '. The dozer at the waste dump just reversed into my path without calling it — missed me by a couple of metres!',
+    message: 'Pit control, ' + truck + '. The dozer at ' + (place || 'the waste dump') + ' just reversed into my path without calling it — missed me by a couple of metres!',
     options: [
       { text: 'Is everyone OK? Dozer to stop and park up. I\'ll notify the supervisor, and tipping stays paused at that spot until they\'ve reviewed it.', rating: 'best',
         feedback: 'Checks welfare, stops the hazard, escalates for investigation.' },
@@ -177,10 +182,10 @@
     timeoutText: 'A near-miss report was ignored.'
   });
 
-  const windrow = (at) => ({
+  const windrow = (at, dumpName, dozer) => ({
     at, type: 'radio', id: 'windrow',
-    from: 'Dozer D2 operator',
-    message: 'The windrow on the waste dump tip edge has been pushed down to about knee height. I need to rebuild it — trucks are still tipping there.',
+    from: (dozer || 'Dozer D2') + ' operator',
+    message: 'The windrow on the ' + (dumpName || 'waste dump') + ' tip edge has been pushed down to about knee height. I need to rebuild it — trucks are still tipping there.',
     options: [
       { text: 'Stop tipping on that edge now. I\'ll send trucks to the other tip head until you confirm the windrow is back to height.', rating: 'best',
         feedback: 'An undersized tip-edge windrow is an over-the-edge risk. Stop tipping there until it is restored.' },
@@ -195,10 +200,10 @@
     timeoutText: 'The dozer operator got no answer about the damaged windrow.'
   });
 
-  const unknownLv = (at) => ({
+  const unknownLv = (at, reporter, vehicle, where) => ({
     at, type: 'radio', id: 'unknown-lv',
-    from: 'T10 operator',
-    message: 'There\'s a white ute on the main ramp heading down into the pit. It\'s not on our channel and it\'s not flying a flag.',
+    from: (reporter || 'T10') + ' operator',
+    message: 'There\'s ' + (vehicle || 'a white ute') + ' on the ' + (where || 'main ramp') + ' heading down into the pit. It\'s not on our channel and it\'s not flying a flag.',
     options: [
       { text: 'All trucks on the ramp stop in place. I\'ll try the ute on all channels and send the supervisor to intercept and escort it out.', rating: 'best',
         feedback: 'An uncontrolled light vehicle among haul trucks is a fatal-risk interaction. Stop traffic, make contact, intercept.' },
@@ -213,10 +218,10 @@
     timeoutText: 'An uncontrolled vehicle on the ramp was reported and pit control did not respond.'
   });
 
-  const waterCart = (at) => ({
+  const waterCart = (at, cart) => ({
     at, type: 'radio', id: 'water-cart',
-    from: 'Water cart WC1',
-    message: 'WC1 here. It\'s getting dusty, visibility is dropping on the ramp. Want me to give it a good soaking?',
+    from: 'Water cart ' + (cart || 'WC1'),
+    message: (cart || 'WC1') + ' here. It\'s getting dusty, visibility is dropping on the ramp. Want me to give it a good soaking?',
     options: [
       { text: 'Water the flat haul roads, but only light, intermittent passes on the ramp and none at intersections. I\'ll let operators know.', rating: 'best',
         feedback: 'Controls dust while avoiding a slick ramp or intersection.' },
@@ -228,118 +233,99 @@
     timeoutText: 'The water cart got no direction about dust control.'
   });
 
-  // --------------------------------------------------------------- scenarios
+  // Lightning: the storm-season hazard at southern African sites. Wording is
+  // generic; align distances and actions with the site's lightning TARP.
+  const lightningWarning = (at, from) => ({
+    at, type: 'radio', id: 'lightning-warning',
+    from: from || 'Emergency control room',
+    message: 'Lightning detector alarm — strikes detected about 10 km away and the storm cell is moving towards the pit.',
+    options: [
+      { text: 'Activate the lightning TARP: announce it on all channels, stop all explosives handling and withdraw the blast crew, get everyone on foot into buildings or vehicles, and keep monitoring the detector.', rating: 'best',
+        effects: [{ type: 'flag', key: 'lightningManaged' }],
+        feedback: 'Acts at the warning stage: people in the open and explosives work are the highest lightning risks.' },
+      { text: 'Warn everyone on the radio to watch the weather; we\'ll act if it gets closer.', rating: 'poor',
+        feedback: 'A warning alone leaves people exposed in the open and explosives work continuing while strikes approach.' },
+      { text: 'It\'ll probably pass to the north — carry on as normal.', rating: 'unsafe', severity: 'major',
+        feedback: 'Storms move unpredictably; the detector alarm is the trigger to act.' },
+      { text: 'Keep the blast crew charging holes — we need that pattern fired today.', rating: 'unsafe', severity: 'critical',
+        feedback: 'Lightning can initiate explosives. Charging must stop when the lightning TARP is triggered.' }
+    ],
+    timeoutEffects: [{ type: 'violation', severity: 'major', category: 'safety', text: 'Lightning detector alarm was not acted on by pit control.' }],
+    timeoutText: 'Pit control did not respond to a lightning alarm.'
+  });
 
-  const SCENARIOS = [
-    {
-      id: 'practice',
-      name: 'Practice shift',
-      practice: true,
-      durationMin: 60,
-      startClockMin: 6 * 60,
-      speed: 15,
-      summary: 'A short, untimed warm-up. Pause and change speed freely. Feedback on radio calls is shown straight away.',
-      briefing: [
-        'The fleet has been allocated sensibly by the previous shift: 5 trucks on S1 (high-grade ore), 5 on S2 (low-grade ore) and 6 on S3 (waste).',
-        'Try reassigning a truck, answering a radio call and handling a shovel breakdown.',
-        'Practice results are not included in the candidate rankings.'
-      ],
-      blend: { min: 1.2, max: 1.6 },
-      targets: { ore: 5500, waste: 2200 },
-      fleet: fleet([['S1', 'CR', 5], ['S2', 'CR', 5], ['S3', 'WD', 6]]),
-      events: [
-        { at: 0, type: 'alert', level: 'info', text: 'Practice shift started. Trucks are leaving the go-line.' },
-        lvCrossing(8, 'LV12 (geology ute)', 'the geology bench'),
-        { at: 20, type: 'shovelDown', shovel: 'S3', minutes: 15, reason: 'Track tension fault' },
-        { at: 35, type: 'fuelLow', truck: 'T03', minutes: 40, radio: fuelRadio('T03') }
-      ]
-    },
-    {
-      id: 'day',
-      name: 'Day shift — routine operations',
-      durationMin: 180,
-      startClockMin: 6 * 60,
-      speed: 15,
-      summary: 'A normal day shift with a poor handover allocation, equipment breakdowns, a crusher outage and routine radio traffic.',
-      briefing: [
-        'Handover note: night shift left 3 trucks on S1 (high-grade), 7 on S2 (low-grade) and 6 on S3 (waste). Check whether that suits the crusher blend and the loading units.',
-        'Crusher feed blend must stay between 1.2% and 1.6% Cu (rolling average of the last 6 loads).',
-        'Shift targets: 21,000 t ore mined and 10,000 t waste.'
-      ],
-      blend: { min: 1.2, max: 1.6 },
-      targets: { ore: 21000, waste: 10000 },
-      fleet: fleet([['S1', 'CR', 3], ['S2', 'CR', 7], ['S3', 'WD', 6]]),
-      events: [
-        { at: 0, type: 'alert', level: 'info', text: 'Day shift started. Review the handover allocation.' },
-        lvCrossing(12, 'LV07 (survey ute)', 'the survey control point'),
-        { at: 25, type: 'fuelLow', truck: 'T06', minutes: 40, radio: fuelRadio('T06') },
-        { at: 40, type: 'shovelDown', shovel: 'S3', minutes: 45, reason: 'Burst hydraulic hose on the boom' },
-        { at: 70, type: 'truckBreakdown', truck: 'T12', minutes: 35, text: 'T12 stopped on the ramp — engine fault.', radio: breakdownRadio('T12', 'main ramp') },
-        { at: 95, type: 'crusherDown', minutes: 30, reason: 'Oversize rock blocking the chute' },
-        fatigue(120, 'T02'),
-        fatigueFollowUp(135, 'T02'),
-        waterCart(145),
-        nearMiss(165, 'T14')
-      ]
-    },
-    {
-      id: 'blast',
-      name: 'Blast day',
-      durationMin: 180,
-      startClockMin: 6 * 60,
-      speed: 15,
-      summary: 'A planned blast at S2 must be cleared safely while rain, breakdowns and fatigue compete for attention.',
-      briefing: [
-        'Drill & blast plan to fire the S2 bench this morning. The shotfirer will issue the blast notice with the firing time.',
-        'To clear a blast: tram S2 to its safe position, withdraw every truck from the exclusion zone, then give the all-clear. Never give the all-clear with equipment inside the zone.',
-        'Blend 1.2–1.6% Cu. Shift targets: 13,000 t ore and 13,000 t waste (reduced for the blast).'
-      ],
-      blend: { min: 1.2, max: 1.6 },
-      targets: { ore: 13000, waste: 13000 },
-      fleet: fleet([['S1', 'CR', 5], ['S2', 'CR', 5], ['S3', 'WD', 6]]),
-      events: [
-        { at: 0, type: 'alert', level: 'info', text: 'Blast day shift started. Expect the blast notice from the shotfirer.' },
-        { at: 20, type: 'blast', shovel: 'S2', blastIn: 40, guard: 10, reentry: 20, radius: 330 },
-        lvCrossing(30, 'LV21 (shotfirer)', 'the magazine access road'),
-        rain(45),
-        rainFollowUp(70),
-        { at: 100, type: 'fuelLow', truck: 'T09', minutes: 40, radio: fuelRadio('T09') },
-        { at: 115, type: 'truckBreakdown', truck: 'T04', minutes: 30, text: 'T04 stopped on the pit floor — engine fault.', radio: breakdownRadio('T04', 'pit floor road') },
-        { at: 140, type: 'shovelDown', shovel: 'S1', minutes: 25, reason: 'Hoist rope inspection fault' },
-        fatigue(160, 'T15'),
-        fatigueFollowUp(172, 'T15')
-      ]
-    },
-    {
-      id: 'night',
-      name: 'Night shift — high pressure',
-      durationMin: 180,
-      startClockMin: 18 * 60,
-      speed: 15,
-      summary: 'Overlapping critical events: a slope-stability alarm, a crusher outage, an unknown vehicle and more.',
-      briefing: [
-        'Two operators (T15, T16) are delayed at the pre-start meeting; their trucks are parked at the go-line. You will be told when they are available.',
-        'Remember the site trigger action response plan (TARP) for geotechnical alarms: withdraw first, investigate second.',
-        'Blend 1.2–1.6% Cu. Shift targets: 18,000 t ore and 11,000 t waste.'
-      ],
-      blend: { min: 1.2, max: 1.6 },
-      targets: { ore: 18000, waste: 11000 },
-      fleet: fleet([['S1', 'CR', 5], ['S2', 'CR', 5], ['S3', 'WD', 6]], ['T15', 'T16']),
-      events: [
-        { at: 0, type: 'alert', level: 'info', text: 'Night shift started. T15 and T16 parked at the go-line awaiting operators.' },
-        { at: 10, type: 'available', trucks: ['T15', 'T16'], text: 'Operators for T15 and T16 have finished pre-start and are ready for assignment.' },
-        geotech(20, 'S1'),
-        { at: 35, type: 'crusherDown', minutes: 25, reason: 'Crusher lube system alarm' },
-        { at: 50, type: 'truckBreakdown', truck: 'T07', minutes: 30, text: 'T07 stopped on the ramp — electrical fault.', radio: breakdownRadio('T07', 'main ramp') },
-        { at: 70, type: 'fuelLow', truck: 'T11', minutes: 40, radio: fuelRadio('T11') },
-        unknownLv(85),
-        fatigue(110, 'T03'),
-        fatigueFollowUp(122, 'T03'),
-        { at: 130, type: 'shovelDown', shovel: 'S3', minutes: 30, reason: 'Bucket tooth lost — searching the muckpile' },
-        windrow(150)
-      ]
+  const lightningFollowUp = (at) => ({
+    at, type: 'violation', when: { flag: 'lightningManaged', is: false }, severity: 'major', category: 'safety',
+    text: 'Personnel were still working in the open when lightning reached the pit — no lightning TARP had been activated.'
+  });
+
+  const lightningCab = (at, operator) => ({
+    at, type: 'radio', id: 'lightning-cab', timeout: 25,
+    from: operator + ' operator',
+    message: 'The storm is right on top of us now. Can I climb down and walk across to the crib hut? It\'s only about 100 metres.',
+    options: [
+      { text: 'Negative — stay in your cab with the door closed until I give the all-clear. The cab is the safest place for you right now.', rating: 'best',
+        feedback: 'An enclosed metal cab protects the operator; walking across open ground during a storm does not.' },
+      { text: 'Wait for a gap between strikes and then go quickly.', rating: 'unsafe', severity: 'major',
+        feedback: 'There is no safe gap — strikes can hit several kilometres from the storm. Stay in the cab.' },
+      { text: 'Yes, go now while it\'s quiet.', rating: 'unsafe', severity: 'major',
+        feedback: 'Exposes the operator in the open during active lightning.' },
+      { text: 'Your call — do whatever you feel is safest.', rating: 'poor',
+        feedback: 'The controller must give a clear instruction during a TARP event.' }
+    ],
+    timeoutEffects: [{ type: 'violation', severity: 'minor', category: 'safety', text: operator + ' operator asked about leaving the cab during lightning and got no answer.' }],
+    timeoutText: 'An operator asked whether to leave the cab during lightning and got no answer.'
+  });
+
+  const dust = (at, where) => ({
+    at, type: 'radio', id: 'dust',
+    from: 'Shift supervisor',
+    message: 'Strong wind has picked up — dust off the ' + (where || 'haul road') + ' has visibility down to about one truck length in places.',
+    options: [
+      { text: 'Slow everything down through the affected section, increase following distances, and have operators stop and wait if they lose sight of the road or the truck ahead.', rating: 'best',
+        effects: [{ type: 'speed', factor: 0.8 }, { type: 'flag', key: 'dustManaged' }],
+        feedback: 'Matches speed and spacing to visibility, with a clear stop rule when visibility is lost.' },
+      { text: 'Just tell operators to put their lights on.', rating: 'poor',
+        feedback: 'Lights help but do not control speed and spacing when visibility is near zero.' },
+      { text: 'Carry on at normal speed; they know the road.', rating: 'unsafe', severity: 'major',
+        feedback: 'Rear-end collisions in dust are a classic haul road fatality mechanism.' }
+    ],
+    timeoutText: 'Pit control did not respond to low visibility on the haul road.'
+  });
+
+  const dustFollowUp = (at) => ({
+    at, type: 'violation', when: { flag: 'dustManaged', is: false }, severity: 'major', category: 'safety',
+    text: 'Two trucks came within metres of a rear-end collision in dust (near miss) — no visibility controls in place.'
+  });
+
+  // ------------------------------------------------------------ site registry
+
+  const SITES = [];
+
+  function registerSite(site) {
+    for (const k of ['id', 'name', 'layout', 'fleet', 'commodity', 'scenarios']) {
+      if (!site[k]) throw new Error('Site profile missing "' + k + '"');
     }
-  ];
+    const existing = SITES.findIndex((x) => x.id === site.id);
+    if (existing >= 0) SITES.splice(existing, 1);
+    SITES.push(site);
+    return site;
+  }
 
-  return { SCENARIOS };
+  function getSite(id) {
+    return SITES.find((s) => s.id === id) || null;
+  }
+
+  function formatGrade(site, g) {
+    return g.toFixed(site.commodity.gradeDecimals != null ? site.commodity.gradeDecimals : 2) + ' ' + site.commodity.gradeUnit;
+  }
+
+  return {
+    SITES, registerSite, getSite, formatGrade,
+    scenarioLib: {
+      fleet, lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
+      geotech, nearMiss, windrow, unknownLv, waterCart,
+      lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp
+    }
+  };
 });

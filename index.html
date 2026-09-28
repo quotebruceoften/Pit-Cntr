@@ -21,6 +21,8 @@
         </div>
       </header>
 
+      <div class="site-bar" id="site-bar"></div>
+
       <div class="home-grid">
         <button class="home-card primary" data-go="setup">
           <span class="hc-title">Start assessment</span>
@@ -39,7 +41,7 @@
       <div class="home-info">
         <h2>What is assessed</h2>
         <ul class="comp-list" id="home-competencies"></ul>
-        <p class="muted small">Recommended sequence for a candidate: Practice shift → Day shift → Blast day → Night shift. Each assessed shift takes about 12 minutes.</p>
+        <p class="muted small" id="home-sequence"></p>
       </div>
     </div>
   </section>
@@ -93,15 +95,16 @@
       <p class="eyebrow" id="brief-mode"></p>
       <h1 id="brief-title"></h1>
       <p class="lede" id="brief-summary"></p>
+      <div class="draft-note" id="brief-draft" hidden></div>
       <div class="brief-grid">
         <div class="panel">
           <h2>Shift briefing</h2>
           <ul id="brief-points" class="bullets"></ul>
           <h2>Your job</h2>
           <ul class="bullets">
-            <li><strong>Dispatch the fleet.</strong> Each truck has a circuit: a loading unit (S1, S2, S3) and a dump (Crusher, ROM stockpile, Waste dump). Change it in the fleet table, or select several trucks and use the bulk bar.</li>
-            <li><strong>Ore goes to the crusher</strong> (or the ROM stockpile if the crusher is down). <strong>Waste goes to the waste dump.</strong> A loaded truck finishes its current load before a new circuit applies; changing only the dump redirects the load on board.</li>
-            <li><strong>Balance the crusher blend</strong> by mixing high-grade (S1) and low-grade (S2) ore.</li>
+            <li><strong>Dispatch the fleet.</strong> Each truck has a circuit: a loading unit and a dump (crusher, ore stockpile or waste dump). Change it in the fleet table, or select several trucks and use the bulk bar.</li>
+            <li><strong>Ore goes to the crusher</strong> (or the ore stockpile if the crusher is down). <strong>Waste goes to the waste dump.</strong> A loaded truck finishes its current load before a new circuit applies; changing only the dump redirects the load on board.</li>
+            <li><strong>Balance the crusher blend</strong> by mixing high-grade (HG) and low-grade (LG) ore faces.</li>
             <li><strong>Answer radio calls</strong> promptly — each has a countdown. Speed and quality both count.</li>
             <li><strong>Keep people safe.</strong> Safety failures outweigh production. A critical safety failure ends any chance of a recommendation.</li>
           </ul>
@@ -251,6 +254,9 @@
 
       <div id="assessor-body" hidden>
         <h1>Assessor dashboard</h1>
+        <div class="filter-row" id="assessor-site-row">
+          <label>Site <select id="assessor-site"></select></label>
+        </div>
         <div class="tabs" role="tablist">
           <button role="tab" class="tab active" data-tab="candidates">Candidates</button>
           <button role="tab" class="tab" data-tab="attempts">All attempts</button>
@@ -274,6 +280,9 @@
         <div class="tab-panel" data-panel="settings">
           <div class="settings-grid">
             <div class="panel">
+              <h2>Active site</h2>
+              <p class="muted small" id="site-lock-note"></p>
+              <select id="set-site" aria-label="Active site"></select>
               <h2>Candidate experience</h2>
               <label class="check"><input type="checkbox" id="set-show-results"> Show the full debrief to candidates at the end of an assessed shift</label>
               <p class="muted small">When off, candidates see a completion message and results are only visible here.</p>
@@ -303,11 +312,16 @@
     </div>
   </section>
 
+  <script src="js/config.js"></script>
   <script src="js/sim/mine.js"></script>
-  <script src="js/sim/scenarios.js"></script>
+  <script src="js/sim/library.js"></script>
   <script src="js/sim/engine.js"></script>
   <script src="js/sim/scoring.js"></script>
+  <!-- Site profiles: add a <script> line per mine. -->
+  <script src="js/sites/demo.js"></script>
+  <script src="js/sites/navachab.js"></script>
   <script src="js/ui/storage.js"></script>
+  <script src="js/ui/site-view.js"></script>
   <script src="js/ui/map.js"></script>
   <script src="js/ui/report.js"></script>
   <script src="js/ui/console.js"></script>

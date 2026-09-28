@@ -7,9 +7,7 @@
 const { createSim } = require('../js/sim/engine.js');
 const { score } = require('../js/sim/scoring.js');
 
-const WEIGHTS = { S1: 5, S2: 5, S3: 6 };
-
-function distribute(total, ids) {
+function distribute(total, ids, WEIGHTS) {
   const wsum = ids.reduce((a, id) => a + WEIGHTS[id], 0);
   const raw = ids.map((id) => ({ id, exact: (total * WEIGHTS[id]) / wsum }));
   const out = {};
@@ -25,6 +23,10 @@ function distribute(total, ids) {
 function expertController(sim, opts) {
   opts = opts || {};
   const s = sim.state;
+  const weights = sim.site.planWeights;
+  const crusher = sim.mine.crusher().id;
+  const stockpile = sim.mine.stockpile();
+  const roleOf = (id) => sim.mine.DUMPS.find((d) => d.id === id).role;
   const answerAfter = opts.answerAfter != null ? opts.answerAfter : 5;
   let lastCheck = -Infinity;
 
@@ -50,14 +52,17 @@ function expertController(sim, opts) {
     const avail = Object.values(s.shovels)
       .filter((sh) => sh.status === 'operating' && !(blastActive && b.shovel === sh.id))
       .map((sh) => sh.id);
-    const oreDump = s.dumps.CR.status === 'operating' ? 'CR' : 'ROM';
+    const oreDump = s.dumps[crusher].status === 'operating' || !stockpile ? crusher : stockpile.id;
+    // Waste units keep their planned waste dump (sites may have several).
+    const wasteDumpFor = (tr) => roleOf(tr.assign.dump) === 'waste' ? tr.assign.dump
+      : (sim.site.wasteDumpFor && sim.site.wasteDumpFor[tr.assign.shovel]) || sim.mine.wasteDump().id;
 
     const released = new Set();
     for (const d of s.disruptions) if (d.type === 'available') d.label.replace('Deploy ', '').split(', ').forEach((id) => released.add(id));
     const pool = s.trucks.filter((tr) => tr.assign.shovel !== 'PARK' || released.has(tr.id));
 
     if (avail.length) {
-      const want = distribute(pool.length, avail);
+      const want = distribute(pool.length, avail, weights);
       const have = {};
       for (const id of avail) have[id] = 0;
       const movers = [];
@@ -69,12 +74,14 @@ function expertController(sim, opts) {
       for (const tr of movers) {
         const target = avail.slice().sort((x, y) => (want[y] - have[y]) - (want[x] - have[x]))[0];
         have[target]++;
-        sim.assign(tr.id, { shovel: target, dump: s.shovels[target].material === 'ore' ? oreDump : 'WD' });
+        const dump = s.shovels[target].material === 'ore' ? oreDump
+          : (sim.site.wasteDumpFor && sim.site.wasteDumpFor[target]) || sim.mine.wasteDump().id;
+        sim.assign(tr.id, { shovel: target, dump });
       }
       for (const tr of pool) {
         const sh = s.shovels[tr.assign.shovel];
         if (!sh) continue;
-        const dump = sh.material === 'ore' ? oreDump : 'WD';
+        const dump = sh.material === 'ore' ? oreDump : wasteDumpFor(tr);
         if (tr.assign.dump !== dump) sim.assign(tr.id, { dump });
       }
     }
@@ -103,9 +110,9 @@ function recklessController(sim) {
   };
 }
 
-function run(scenario, makeController, opts) {
+function run(site, scenario, makeController, opts) {
   opts = opts || {};
-  const sim = createSim(scenario, { seed: opts.seed || 42 });
+  const sim = createSim(site, scenario, { seed: opts.seed || 42 });
   const control = makeController ? makeController(sim, opts) : () => {};
   const speed = scenario.speed || 15;
   while (!sim.state.finished) {

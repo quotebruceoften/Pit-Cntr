@@ -10,9 +10,34 @@
   const esc = UI.esc;
   const $ = (id) => document.getElementById(id);
 
-  let pending = null; // { scenario, candidate }
+  const config = root.PitSimConfig || {};
+  let pending = null; // { site, scenario, candidate }
   let reportReturn = 'home';
   let unlocked = false;
+
+  // ----------------------------------------------------------------- sites
+  function activeSite() {
+    const url = new URLSearchParams(root.location.search).get('site');
+    const id = config.lockSite ? config.defaultSite : (url || store.settings().siteId || config.defaultSite);
+    return P.getSite(id) || P.SITES[0];
+  }
+
+  function siteOptions(selectedId) {
+    return P.SITES.map((x) => '<option value="' + esc(x.id) + '"' + (x.id === selectedId ? ' selected' : '') + '>' +
+      esc(x.name) + (x.status === 'draft' ? ' (draft)' : x.status === 'demo' ? ' (demo)' : '') + '</option>').join('');
+  }
+
+  function renderSiteBar() {
+    const site = activeSite();
+    $('site-bar').innerHTML =
+      '<span class="site-name">' + esc(site.name) + '</span><span class="site-loc">' + esc(site.location || '') + '</span>' +
+      (config.lockSite || P.SITES.length < 2 ? '' : '<label>Site <select id="site-select">' + siteOptions(site.id) + '</select></label>') +
+      (site.statusNote ? '<div class="draft-note">' + esc(site.statusNote) + '</div>' : '');
+    $('home-sequence').textContent = 'Recommended sequence for a candidate: ' + site.scenarios.map((s) => s.name).join(' → ') +
+      '. Each assessed shift takes about ' + Math.round(Math.max(...site.scenarios.map((s) => s.durationMin / s.speed))) + ' minutes.';
+    const sel = $('site-select');
+    if (sel) sel.addEventListener('change', () => { store.saveSettings({ siteId: sel.value }); renderSiteBar(); });
+  }
 
   function show(name) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === 'screen-' + name));
@@ -20,10 +45,11 @@
   }
 
   function go(target) {
-    if (target === 'home') return show('home');
+    if (target === 'home') { renderSiteBar(); return show('home'); }
     if (target === 'setup') { renderScenarioOptions(); show('setup'); $('cand-name').focus(); return; }
     if (target === 'practice') {
-      pending = { scenario: P.SCENARIOS.find((s) => s.practice), candidate: null };
+      const site = activeSite();
+      pending = { site, scenario: site.scenarios.find((s) => s.practice), candidate: null };
       return briefing();
     }
     if (target === 'assessor') { renderAssessor(); show('assessor'); if (!unlocked) $('pin-input').focus(); }
@@ -32,12 +58,13 @@
   document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
 
   // ------------------------------------------------------------------ home
+  renderSiteBar();
   $('home-competencies').innerHTML = P.COMPETENCIES.map((c) =>
     '<li><span class="w">' + Math.round(c.weight * 100) + '%</span><strong>' + esc(c.name) + '</strong><span class="d">' + esc(c.desc) + '</span></li>').join('');
 
   // ----------------------------------------------------------------- setup
   function renderScenarioOptions() {
-    const assessed = P.SCENARIOS.filter((s) => !s.practice);
+    const assessed = activeSite().scenarios.filter((s) => !s.practice);
     $('scenario-options').innerHTML = assessed.map((s, i) =>
       '<label class="scenario-opt"><input type="radio" name="scenario" value="' + s.id + '"' + (i === 0 ? ' checked' : '') + '>' +
       '<div><strong>' + esc(s.name) + ' <span class="muted small">· ' + s.durationMin / 60 + ' h shift, ~' + Math.round(s.durationMin / s.speed) + ' min</span></strong>' +
@@ -49,8 +76,10 @@
     const f = new FormData(e.target);
     const name = String(f.get('name') || '').trim();
     if (!name) return;
+    const site = activeSite();
     pending = {
-      scenario: P.SCENARIOS.find((s) => s.id === f.get('scenario')),
+      site,
+      scenario: site.scenarios.find((s) => s.id === f.get('scenario')),
       candidate: {
         name,
         ref: String(f.get('ref') || '').trim(),
@@ -65,7 +94,9 @@
   function briefing() {
     const sc = pending.scenario;
     const practice = !!sc.practice;
-    $('brief-mode').textContent = practice ? 'Practice shift' : 'Assessment · ' + pending.candidate.name;
+    $('brief-mode').textContent = pending.site.name + ' · ' + (practice ? 'Practice shift' : 'Assessment · ' + pending.candidate.name);
+    $('brief-draft').hidden = !pending.site.statusNote;
+    $('brief-draft').textContent = pending.site.statusNote || '';
     $('brief-title').textContent = sc.name;
     $('brief-summary').textContent = sc.summary;
     $('brief-points').innerHTML = sc.briefing.map((b) => '<li>' + esc(b) + '</li>').join('');
@@ -86,13 +117,14 @@
   }
 
   $('btn-start-shift').addEventListener('click', () => {
-    const { scenario, candidate } = pending;
+    const { site, scenario, candidate } = pending;
     const startedAt = new Date().toISOString();
     show('sim');
     UI.startConsole({
+      site,
       scenario,
       candidate,
-      onFinish: (summary, meta) => finishShift(scenario, candidate, startedAt, summary, meta)
+      onFinish: (summary, meta) => finishShift(site, scenario, candidate, startedAt, summary, meta)
     });
   });
 
@@ -100,9 +132,11 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
-  function finishShift(scenario, candidate, startedAt, summary, meta) {
+  function finishShift(site, scenario, candidate, startedAt, summary, meta) {
     const record = {
       id: uid(),
+      siteId: site.id,
+      siteName: site.name,
       candidate: candidate || { name: 'Practice' },
       scenarioId: scenario.id,
       scenarioName: scenario.name,
@@ -184,7 +218,7 @@
 
   function renderCandidates() {
     const table = $('cand-table');
-    const list = store.candidates();
+    const list = store.candidates(assessorSite());
     if (!list.length) {
       table.innerHTML = '<tr><td class="empty">No assessed shifts yet.</td></tr>';
       return;
@@ -215,7 +249,9 @@
     const filter = $('attempt-filter').value;
     const q = $('attempt-search').value.trim().toLowerCase();
     const includePractice = $('attempt-practice').checked;
-    const rows = store.list().filter((r) => (includePractice || !r.practice) && (!filter || r.scenarioId === filter) &&
+    const siteId = assessorSite();
+    const rows = store.list().filter((r) => (includePractice || !r.practice) && (!siteId || store.siteOf(r) === siteId) &&
+      (!filter || store.siteOf(r) + ':' + r.scenarioId === filter) &&
       (!q || (r.candidate.name || '').toLowerCase().includes(q) || (r.candidate.ref || '').toLowerCase().includes(q)));
     if (!rows.length) {
       table.innerHTML = '<tr><td class="empty">No matching attempts.</td></tr>';
@@ -260,10 +296,24 @@
     $('assessor-lock').hidden = unlocked;
     $('assessor-body').hidden = !unlocked;
     if (!unlocked) return;
+    const siteSel = $('assessor-site');
+    if (!siteSel.options.length) {
+      siteSel.innerHTML = (config.lockSite ? '' : '<option value="">All sites</option>') + siteOptions(activeSite().id);
+      siteSel.value = activeSite().id;
+    }
+    $('assessor-site-row').hidden = config.lockSite || P.SITES.length < 2;
     const sel = $('attempt-filter');
     const cur = sel.value;
-    sel.innerHTML = '<option value="">All scenarios</option>' + P.SCENARIOS.map((s) => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
-    sel.value = cur;
+    const sites = assessorSite() ? [P.getSite(assessorSite())] : P.SITES;
+    sel.innerHTML = '<option value="">All scenarios</option>' + sites.map((site) => site.scenarios.map((s) =>
+      '<option value="' + site.id + ':' + s.id + '">' + (sites.length > 1 ? esc(site.name) + ' — ' : '') + esc(s.name) + '</option>').join('')).join('');
+    sel.value = [...sel.options].some((o) => o.value === cur) ? cur : '';
+    const setSite = $('set-site');
+    setSite.innerHTML = siteOptions(activeSite().id);
+    setSite.disabled = !!config.lockSite;
+    $('site-lock-note').textContent = config.lockSite
+      ? 'This installation is locked to ' + activeSite().name + '.'
+      : 'The site used for new assessments and practice shifts on this computer.';
     $('set-show-results').checked = store.settings().showResultsToCandidate;
     renderCandidates();
     renderAttempts();
@@ -272,6 +322,15 @@
     }
   }
 
+  function assessorSite() {
+    return $('assessor-site').value;
+  }
+
+  $('assessor-site').addEventListener('change', () => { $('attempt-filter').value = ''; renderAssessor(); });
+  $('set-site').addEventListener('change', (e) => {
+    store.saveSettings({ siteId: e.target.value });
+    $('import-status').textContent = 'Active site set to ' + P.getSite(e.target.value).name + '.';
+  });
   $('attempt-filter').addEventListener('change', renderAttempts);
   $('attempt-search').addEventListener('input', renderAttempts);
   $('attempt-practice').addEventListener('change', renderAttempts);

@@ -8,7 +8,7 @@
 
   const RESULTS_KEY = 'pitsim.v1.results';
   const SETTINGS_KEY = 'pitsim.v1.settings';
-  const DEFAULT_SETTINGS = { pin: '1234', showResultsToCandidate: true };
+  const DEFAULT_SETTINGS = { pin: '1234', showResultsToCandidate: true, siteId: null };
   const memory = {};
   let persistent = true;
 
@@ -36,6 +36,9 @@
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+
+  // Results saved before multi-site support belong to the demo site.
+  const siteOf = (r) => r.siteId || 'demo';
 
   function list() {
     const rows = read(RESULTS_KEY, []);
@@ -73,11 +76,11 @@
   }
 
   // Combine a candidate's assessed attempts into one recommendation.
-  function candidates() {
+  function candidates(siteId) {
     const groups = {};
     for (const r of list()) {
-      if (r.practice) continue;
-      const k = candidateKey(r.candidate);
+      if (r.practice || (siteId && siteOf(r) !== siteId)) continue;
+      const k = siteOf(r) + '|' + candidateKey(r.candidate);
       (groups[k] = groups[k] || { candidate: r.candidate, attempts: [] }).attempts.push(r);
     }
     return Object.values(groups).map((g) => {
@@ -127,7 +130,7 @@
   }
 
   function exportCSV() {
-    const head = ['finished_at', 'candidate', 'ref', 'role', 'years', 'scenario', 'practice', 'overall',
+    const head = ['finished_at', 'site', 'candidate', 'ref', 'role', 'years', 'scenario', 'practice', 'overall',
       'safety', 'production', 'efficiency', 'grade', 'decisions', 'awareness', 'critical_failures', 'recommendation',
       'ore_t', 'waste_t', 'safety_violations', 'process_violations', 'avg_radio_response_s', 'window_hidden_count'];
     const lines = [head.join(',')];
@@ -136,7 +139,7 @@
       const c = r.result.competencies;
       const avgResp = r.result.detail.decisions.avgResponse;
       lines.push([
-        r.finishedAt, r.candidate.name, r.candidate.ref, r.candidate.role, r.candidate.years, r.scenarioName, r.practice ? 'yes' : 'no', r.result.overall,
+        r.finishedAt, r.siteName || 'Demo Copper Mine', r.candidate.name, r.candidate.ref, r.candidate.role, r.candidate.years, r.scenarioName, r.practice ? 'yes' : 'no', r.result.overall,
         c.safety, c.production, c.efficiency, c.grade, c.decisions, c.awareness, r.result.critical, r.result.recommendation.label,
         Math.round(s.totals.oreCrusher + s.totals.oreRom), Math.round(s.totals.waste),
         s.violations.filter((v) => v.category === 'safety').length, s.violations.filter((v) => v.category === 'process').length,
@@ -170,7 +173,7 @@
 
   PitUI.esc = esc;
   PitUI.store = {
-    list, save, remove, clear, get, settings, saveSettings, candidates,
+    list, save, remove, clear, get, settings, saveSettings, candidates, siteOf,
     exportCSV, exportJSON, importJSON,
     isPersistent: () => persistent
   };

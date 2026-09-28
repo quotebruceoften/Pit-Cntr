@@ -17,12 +17,9 @@
     root.PitSim = root.PitSim || {};
     Object.assign(root.PitSim, factory(root.PitSim));
   }
-})(typeof self !== 'undefined' ? self : this, function (mine) {
+})(typeof self !== 'undefined' ? self : this, function (ns) {
   'use strict';
 
-  const { NODES, SHOVELS, DUMPS, BASE, edge, shortestPath } = mine;
-
-  const PAYLOAD_T = 220;
   const SPOT_SEC = 30;
   const FUEL_SEC = 8 * 60;
   const TRAM_SEC = 8 * 60;
@@ -43,8 +40,14 @@
     };
   }
 
-  function createSim(scenario, opts) {
+  // site: a site profile (see js/sites/). scenario: one of its scenarios.
+  function createSim(site, scenario, opts) {
     opts = opts || {};
+    const mine = ns.createMine(site.layout);
+    const { NODES, SHOVELS, DUMPS, BASE, edge, shortestPath } = mine;
+    const PAYLOAD_T = site.fleet.payloadT;
+    const CRUSHER = mine.crusher().id;
+    const roleOf = (dumpId) => (DUMPS.find((d) => d.id === dumpId) || {}).role;
     const rng = mulberry32(opts.seed != null ? opts.seed : (scenario.seed || 1));
     const jitter = (spread) => 1 + (rng() * 2 - 1) * spread;
 
@@ -318,7 +321,7 @@
     // ------------------------------------------------------ loading/dumping
 
     function defaultDump(shovel) {
-      return shovel.material === 'ore' ? 'CR' : 'WD';
+      return shovel.material === 'ore' ? CRUSHER : mine.wasteDump().id;
     }
 
     function completeLoad(shovel, truck) {
@@ -342,25 +345,25 @@
 
       if (load.material === 'waste') {
         state.totals.waste += load.tonnes;
-        if (dump.id === 'CR') {
+        if (dump.role === 'crusher') {
           violation('major', 'process', truck.id + ' tipped waste into the crusher — crusher blocked for clean-out.');
           dump.status = 'down';
           dump.until = state.t + CRUSHER_CONTAMINATION_SEC;
           dump.downReason = 'Waste contamination clean-out';
-        } else if (dump.id === 'ROM') {
-          violation('minor', 'process', truck.id + ' tipped waste on the ROM ore stockpile (dilution).');
+        } else if (dump.role === 'stockpile') {
+          violation('minor', 'process', truck.id + ' tipped waste on the ' + dump.name + ' (dilution).');
         }
-      } else if (dump.id === 'CR') {
+      } else if (dump.role === 'crusher') {
         state.totals.oreCrusher += load.tonnes;
-      } else if (dump.id === 'ROM') {
+      } else if (dump.role === 'stockpile') {
         state.totals.oreRom += load.tonnes;
       } else {
         state.totals.oreLost += load.tonnes;
-        violation('major', 'process', truck.id + ' tipped ' + load.tonnes + ' t of ore on the waste dump (ore loss).');
+        violation('major', 'process', truck.id + ' tipped ' + load.tonnes + ' t of ore on the ' + dump.name + ' (ore loss).');
       }
 
-      if (dump.id === 'CR') {
-        const crusherTips = state.tips.filter((x) => x.dump === 'CR').concat([tip]);
+      if (dump.role === 'crusher') {
+        const crusherTips = state.tips.filter((x) => x.dump === CRUSHER).concat([tip]);
         const window = crusherTips.slice(-BLEND_WINDOW);
         const tonnes = window.reduce((s, x) => s + x.tonnes, 0);
         tip.blend = window.reduce((s, x) => s + x.grade * x.tonnes, 0) / tonnes;
@@ -534,7 +537,9 @@
         for (const tr of state.trucks) {
           const inside = Math.hypot(tr.x - zone.x, tr.y - zone.y) <= zone.r;
           if (!inside) continue;
-          const graceOk = zone.initialInside.includes(tr.id) && state.t - zone.activeFrom <= zone.grace;
+          // Everyone gets the grace period to clear out (or be re-routed) once
+          // a zone is declared; blast zones have no grace (they are announced).
+          const graceOk = state.t - zone.activeFrom <= zone.grace;
           if (graceOk) continue;
           const flag = zone.id + ':' + severity;
           if (tr.zoneFlags[flag]) continue;
@@ -548,7 +553,6 @@
     }
 
     function addZone(zone) {
-      zone.initialInside = equipmentInZone(zone);
       state.zones.push(zone);
     }
 
@@ -665,7 +669,7 @@
           break;
         }
         case 'crusherDown': {
-          const d = state.dumps.CR;
+          const d = state.dumps[CRUSHER];
           d.status = 'down';
           d.until = state.t + ev.minutes * 60;
           d.downReason = ev.reason;
@@ -673,7 +677,7 @@
           addDisruption(
             { id: 'crusher-' + state.t, type: 'crusherDown', label: 'Crusher outage', start: state.t, target: 5 * 60, limit: 25 * 60 },
             {
-              resolved: () => trucksAssignedTo((tr) => tr.assign.dump === 'CR').length === 0,
+              resolved: () => trucksAssignedTo((tr) => roleOf(tr.assign.dump) === 'crusher').length === 0,
               ended: () => d.status !== 'down'
             }
           );
@@ -720,7 +724,6 @@
             confirmedAt: null, firedAt: null, reopenAt: null, delayed: false
           };
           state.zones.push(zone);
-          zone.initialInside = [];
           alert('danger', 'BLAST NOTICE: ' + s.name + ' bench to be fired at ' + clock(state.blast.blastAt) +
             '. Guard period from ' + clock(state.blast.guardAt) + '. Tram ' + s.name + ' clear, withdraw all trucks, then give the all-clear.');
           addDisruption(
@@ -735,6 +738,25 @@
         case 'speed':
           state.speedFactor = ev.factor;
           break;
+        case 'standDown': {
+          // Whole-pit stop (e.g. lightning TARP): trucks parked, loading units stopped.
+          alert('danger', ev.text || 'All mobile equipment stood down for ' + ev.minutes + ' min.');
+          for (const tr of state.trucks) {
+            if (!tr.hold) holdTruck(tr, ev.minutes * 60, ev.reason || 'stand-down lifted', 'standdown');
+          }
+          for (const s of Object.values(state.shovels)) {
+            if (s.status !== 'operating') continue;
+            if (s.serving) {
+              s.queue.unshift(s.serving);
+              truckById(s.serving).phase = 'queueShovel';
+              s.serving = null;
+            }
+            s.status = 'down';
+            s.until = state.t + ev.minutes * 60;
+            s.downReason = ev.reason || 'Stand-down';
+          }
+          break;
+        }
         case 'violation':
           violation(ev.severity, ev.category || 'safety', ev.text);
           break;
@@ -961,10 +983,13 @@
         opTime: s.opTime, busyTime: s.busyTime, hangTime: s.hangTime,
         utilisation: s.opTime > 0 ? s.busyTime / s.opTime : 0
       }));
-      const crusherTips = state.tips.filter((x) => x.dump === 'CR');
+      const crusherTips = state.tips.filter((x) => x.dump === CRUSHER);
       const graded = crusherTips.slice(2).filter((x) => x.assessable);
       const loads = state.tips.length;
       return {
+        siteId: site.id,
+        siteName: site.name,
+        gradeUnit: site.commodity.gradeUnit,
         scenarioId: scenario.id,
         scenarioName: scenario.name,
         practice: !!scenario.practice,
@@ -996,6 +1021,8 @@
     }
 
     return {
+      site,
+      mine,
       state,
       step,
       advanceReal,

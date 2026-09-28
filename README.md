@@ -2,7 +2,18 @@
 
 A browser-based open-pit mine dispatch simulation for **assessing pit controller competency** and **identifying new pit controllers** from your operator workforce or external applicants.
 
-Candidates run a compressed shift in the pit control seat: dispatching a 16-truck haul fleet between three loading units and three dump points, answering radio calls, and handling breakdowns, crusher outages, blasts, slope-stability alarms and fatigue. Every candidate in a scenario gets the same scripted events at the same times, so results are directly comparable.
+Candidates run a compressed shift in the pit control seat. They dispatch the haul fleet between loading units and dump points, answer radio calls, and handle breakdowns, crusher outages, blasts, lightning, slope-stability alarms and fatigue. Every candidate in a scenario gets the same scripted events at the same times, so results are directly comparable.
+
+## Sites
+
+Each mine is modelled as a **site profile**. A profile holds the mine's own pit and haul-road layout, fleet, loading units, dumps, commodity and grade units, and a set of scenarios written in its own terminology. The engine, scoring and assessor tools are shared by every site. See [docs/SITE_PROFILES.md](docs/SITE_PROFILES.md) for how to onboard a mine.
+
+| Site | Status | Scenarios |
+|---|---|---|
+| **QKR Navachab Gold Mine** (Karibib, Namibia) | Draft: placeholders to confirm, see [data sheet](docs/sites/navachab-data-sheet.md) | Practice · Day shift (Main Pit & Anomaly 16) · Summer storm & blast (lightning TARP) · Night shift (slope radar alarm) |
+| Demo Copper Mine | Fictional demo | Practice · Day shift · Blast day · Night shift |
+
+Pick the active site on the home screen or under assessor Settings. For a customer installation, lock the site in `js/config.js`.
 
 ## Running it
 
@@ -17,13 +28,12 @@ To serve it locally instead, run `npm start` (uses `http-server`) and open http:
 3. **Debrief.** Shows competency scores, the recommendation, every radio decision next to the best answer, incidents, disruption response times and a crusher blend chart. It can be printed or saved as a PDF.
 4. **Assessor dashboard** (default PIN `1234`, change it under Settings). Candidate rankings combine each person's assessed shifts. You can also drill into every attempt, export CSV/JSON, and import results from other assessment PCs.
 
-### Scenarios
+### What the scenarios test
 
-| Scenario | What it tests |
-|---|---|
-| Day shift: routine operations | Fixing a poor handover allocation, shovel breakdown, crusher outage, low fuel, fatigue, near miss, water cart, light-vehicle crossing |
-| Blast day | Tramming the shovel out, clearing the exclusion zone, giving a correct all-clear, and returning safely, while also handling rain, a breakdown and fatigue |
-| Night shift: high pressure | A slope-radar alarm (TARP), overlapping crusher outage, an unknown vehicle on the ramp, deploying late operators, a damaged windrow |
+- **Day shift:** fixing a poor handover allocation, a loading-unit breakdown, a crusher outage, low fuel, fatigue, a near miss, dust and water-cart control, a light-vehicle crossing.
+- **Blast:** tramming the unit out, clearing the exclusion zone, giving a correct all-clear, and returning safely.
+- **Weather:** the lightning TARP (warning, then stand-down with operators staying in their cabs), then wet roads.
+- **Night shift:** a slope-radar alarm (geotech TARP), an overlapping crusher outage, an unknown vehicle on the ramp, deploying late operators, a damaged windrow.
 
 ## Scoring
 
@@ -50,6 +60,8 @@ Integrity: the debrief records how many times the candidate switched away from t
 - the passive and reckless controllers are *Not suitable*,
 - the expert beats the passive controller by at least 30 points.
 
+These checks run for every scenario of every site profile. The tests also check that each scenario only references equipment that exists at its site.
+
 It also tests the engine's rules: the blast lifecycle, loads finishing to the right dump after reassignment, fuel, geotech zones, radio timeouts and determinism.
 
 ```
@@ -61,23 +73,25 @@ Shift targets were calibrated against the expert bot, so a strong human controll
 ## Project layout
 
 ```
-index.html            App shell (all screens)
-css/styles.css        Control-room theme
-js/sim/mine.js        Road network, loading units, dumps, routing, truck speeds
+index.html            App shell (all screens); one <script> line per site profile
+js/config.js          Deployment config: default site, lock to one site
+js/sim/mine.js        Builds a mine model (roads, routing, speeds) from a site layout
 js/sim/engine.js      Simulation engine (trucks, queues, blasts, zones, radio, disruptions)
-js/sim/scenarios.js   Scripted scenarios and radio calls
+js/sim/library.js     Reusable radio calls and events, site registry
 js/sim/scoring.js     Competency scoring and recommendation bands
+js/sites/*.js         Site profiles (navachab.js, demo.js)
 js/ui/*.js            Map renderer, console, report, storage, app shell
-tests/                Node test suite and calibration bots
+docs/                 Site onboarding guide and per-site data sheets
+tests/                Node test suite and calibration bots (run on every site)
 ```
 
-## Customising for your site
+## Customising
 
-- **Scenarios / radio calls:** edit `js/sim/scenarios.js`. Events are timed in minutes from the start of the shift. Radio options are rated `best`, `ok`, `poor` or `unsafe` and can trigger effects such as `hold`, `evacuate`, `speed`, `fuel`, `flag` or `violation`. Align the wording with your site's TARPs and procedures.
-- **Mine layout, fleet, speeds and grades:** edit `js/sim/mine.js`.
+- **A mine's layout, fleet, grades and scenarios:** edit its file in `js/sites/`. To add a new mine, see [docs/SITE_PROFILES.md](docs/SITE_PROFILES.md).
+- **Radio calls shared across sites:** edit `js/sim/library.js`.
 - **Weights and bands:** edit `js/sim/scoring.js`.
 - After changing anything, run `npm test`. If the expert bot's production shifts, re-calibrate the targets.
 
 ## Data and privacy
 
-Results are stored only in the browser's local storage on the machine that ran the assessment. Export JSON regularly to keep them. The assessor PIN deters casual access on a shared PC but is not real security. Use this tool as one input to a selection decision, alongside interviews and on-the-job assessment.
+Results are stored only in the browser's local storage on the machine that ran the assessment, and each result is tagged with its site. Export JSON regularly to keep them. The assessor PIN deters casual access on a shared PC but is not real security. Use this tool as one input to a selection decision, alongside interviews and on-the-job assessment.

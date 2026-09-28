@@ -9,21 +9,8 @@
   const esc = (s) => PitUI.esc(s);
   const $ = (id) => document.getElementById(id);
 
-  const SHOVEL_OPTS = [
-    ['S1', 'S1 HG'], ['S2', 'S2 LG'], ['S3', 'S3 Waste'], ['PARK', 'Park']
-  ];
-  const DUMP_OPTS = [['CR', 'Crusher'], ['ROM', 'ROM'], ['WD', 'Waste']];
-  const DUMP_NAMES = { CR: 'Crusher', ROM: 'ROM', WD: 'Waste dump' };
-  const PLACE_NAMES = Object.assign({ WS: 'Workshop' }, DUMP_NAMES);
-
   function options(list, value) {
     return list.map(([v, l]) => '<option value="' + v + '"' + (v === value ? ' selected' : '') + '>' + l + '</option>').join('');
-  }
-
-  function mismatch(shovel, dump) {
-    const s = P.SHOVELS.find((x) => x.id === shovel);
-    if (!s) return false;
-    return s.material === 'ore' ? dump === 'WD' : dump !== 'WD';
   }
 
   function fmtMin(sec) {
@@ -61,10 +48,15 @@
   }
 
   function startConsole(opts) {
-    const { scenario, candidate, onFinish } = opts;
+    const { site, scenario, candidate, onFinish } = opts;
     const practice = !!scenario.practice;
-    const sim = P.createSim(scenario, { seed: scenario.seed || 1 });
+    const sim = P.createSim(site, scenario, { seed: scenario.seed || 1 });
     const state = sim.state;
+    const view = PitUI.createSiteView(site, scenario, sim.mine);
+    const { mismatch } = view;
+    const SHOVEL_OPTS = view.shovelOptions;
+    const DUMP_OPTS = view.dumpOptions;
+    const crusherId = sim.mine.crusher().id;
     const ac = new AbortController();
     const on = (el, ev, fn) => el.addEventListener(ev, fn, { signal: ac.signal });
     const beeper = createBeeper();
@@ -86,7 +78,7 @@
     $('speed-controls').hidden = !practice;
     $('speed-select').value = String(speed);
     $('btn-pause').textContent = '❚❚';
-    $('kpi-blend-spec').textContent = 'spec ' + scenario.blend.min.toFixed(1) + '–' + scenario.blend.max.toFixed(1) + '%';
+    $('kpi-blend-spec').textContent = 'spec ' + scenario.blend.min.toFixed(1) + '–' + scenario.blend.max.toFixed(1) + ' ' + view.unit;
     $('event-log').innerHTML = '';
     $('radio-panel').innerHTML = '';
     $('toast-host').innerHTML = '';
@@ -109,7 +101,7 @@
 
     // ------------------------------------------------------------------ map
     const canvas = $('map');
-    const map = PitUI.createMap(canvas, sim);
+    const map = PitUI.createMap(canvas, sim, view);
     const ro = new ResizeObserver(() => map.resize());
     ro.observe($('map-wrap'));
     on(canvas, 'click', (e) => {
@@ -161,8 +153,7 @@
         const shovel = r.shovel.value;
         const upd = { shovel };
         // Pick a sensible default dump when switching material type.
-        const s = P.SHOVELS.find((x) => x.id === shovel);
-        if (s && mismatch(shovel, r.dump.value)) upd.dump = s.material === 'ore' ? (state.dumps.CR.status === 'operating' ? 'CR' : 'ROM') : 'WD';
+        if (mismatch(shovel, r.dump.value)) upd.dump = view.defaultDump(shovel, state);
         sim.assign(tr.id, upd);
         updateFleet(true);
       });
@@ -194,9 +185,7 @@
         if (dump) upd.dump = dump;
         else if (shovel && shovel !== 'PARK') {
           const tr = state.trucks.find((t) => t.id === id);
-          if (mismatch(shovel, tr.assign.dump)) {
-            upd.dump = P.SHOVELS.find((x) => x.id === shovel).material === 'ore' ? (state.dumps.CR.status === 'operating' ? 'CR' : 'ROM') : 'WD';
-          }
+          if (mismatch(shovel, tr.assign.dump)) upd.dump = view.defaultDump(shovel, state);
         }
         sim.assign(id, upd);
       }
@@ -221,13 +210,13 @@
       if (tr.hold) {
         return { text: (tr.hold.kind === 'breakdown' ? 'DOWN ' : 'STOPPED ') + fmtMin(tr.hold.until - state.t), cls: 'down', title: tr.hold.reason };
       }
-      const at = tr.at ? (PLACE_NAMES[tr.at] || tr.at) : '';
+      const at = tr.at ? view.placeName(tr.at) : '';
       switch (tr.phase) {
         case 'idle': return { text: 'Go-line · departs ' + sim.clock(tr.departAt) };
         case 'toShovel': return { text: '→ ' + tr.dest };
         case 'queueShovel': return { text: 'Queued @ ' + at };
         case 'loading': return { text: 'Loading @ ' + at };
-        case 'toDump': return { text: '→ ' + DUMP_NAMES[tr.dest] };
+        case 'toDump': return { text: '→ ' + view.placeName(tr.dest) };
         case 'queueDump': return { text: 'Queued @ ' + at };
         case 'dumping': return { text: 'Tipping @ ' + at };
         case 'toBase': return tr.purpose === 'fuel' ? { text: '→ Fuel bay', cls: 'fuel' } : { text: '→ Go-line (park)' };
@@ -240,8 +229,8 @@
     function loadCell(tr) {
       if (!tr.load) return '<span class="load-dot" title="Empty"></span><span class="muted">—</span>';
       if (tr.load.material === 'waste') return '<span class="load-dot waste"></span>Waste';
-      const hg = tr.load.source === 'S1';
-      return '<span class="load-dot ' + (hg ? 'hg' : 'lg') + '"></span>' + (hg ? 'HG ' : 'LG ') + tr.load.grade.toFixed(2);
+      const cls = view.loadClass(tr.load);
+      return '<span class="load-dot ' + cls + '"></span>' + view.tag(tr.load.source) + ' ' + tr.load.grade.toFixed(view.decimals);
     }
 
     function updateFleet() {
@@ -275,7 +264,7 @@
       card.className = 'equip-card';
       card.innerHTML =
         '<div class="ec-head"><span class="ec-name">' + esc(s.name) + '</span><span class="chip"></span></div>' +
-        '<div class="ec-row"><span>' + esc(s.label) + (s.material === 'ore' ? ' ' + s.grade.toFixed(1) + '%' : '') + '</span></div>' +
+        '<div class="ec-row"><span>' + esc(s.label) + (s.material === 'ore' ? ' · ' + view.grade(s.grade) : '') + '</span></div>' +
         '<div class="ec-row"><span>Assigned</span><b class="f-assigned"></b></div>' +
         '<div class="ec-row"><span>Queue</span><b class="f-queue"></b></div>' +
         '<div class="ec-row"><span>Utilisation</span><b class="f-util"></b></div>' +
@@ -493,10 +482,11 @@
       $('kpi-ore-text').textContent = Math.round(ore).toLocaleString() + ' / ' + t.ore.toLocaleString() + ' t';
       $('kpi-waste').style.width = Math.min(100, (100 * state.totals.waste) / t.waste) + '%';
       $('kpi-waste-text').textContent = Math.round(state.totals.waste).toLocaleString() + ' / ' + t.waste.toLocaleString() + ' t';
-      const last = state.tips.filter((x) => x.dump === 'CR').pop();
+      const last = state.tips.filter((x) => x.dump === crusherId).pop();
       const bl = $('kpi-blend');
       if (last) {
-        bl.textContent = last.blend.toFixed(2) + '%';
+        bl.textContent = last.blend.toFixed(view.decimals);
+        bl.title = view.grade(last.blend);
         bl.className = 'tb-blend ' + (last.inSpec ? 'in' : 'out');
       }
       const inc = state.violations.filter((v) => v.category === 'safety').length;

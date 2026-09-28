@@ -10,8 +10,9 @@
 
   const RATING_LABEL = { best: 'Best', ok: 'Acceptable', poor: 'Poor', unsafe: 'Unsafe', timeout: 'No response' };
 
-  function clockFn(scenarioId) {
-    const sc = P.SCENARIOS.find((s) => s.id === scenarioId);
+  function clockFn(summary) {
+    const site = P.getSite(summary.siteId || 'demo');
+    const sc = site && site.scenarios.find((s) => s.id === summary.scenarioId);
     const start = sc ? sc.startClockMin : 360;
     return (t) => {
       const total = Math.floor(start + t / 60);
@@ -30,8 +31,10 @@
     const H = 140;
     const pad = { l: 34, r: 8, t: 8, b: 20 };
     const tMax = summary.durationMin * 60;
-    const yMin = 0.6;
-    const yMax = 2.3;
+    const spec0 = summary.blendSpec;
+    const vals = pts.map((p) => p.blend);
+    const yMin = Math.max(0, Math.min(spec0.min * 0.6, Math.min.apply(null, vals)) * 0.95);
+    const yMax = Math.max(spec0.max * 1.3, Math.max.apply(null, vals)) * 1.05;
     const x = (t) => pad.l + (t / tMax) * (W - pad.l - pad.r);
     const y = (v) => pad.t + (1 - (v - yMin) / (yMax - yMin)) * (H - pad.t - pad.b);
     const spec = summary.blendSpec;
@@ -56,7 +59,8 @@
     opts = opts || {};
     const s = record.summary;
     const r = record.result;
-    const clock = clockFn(s.scenarioId);
+    const clock = clockFn(s);
+    const unit = s.gradeUnit || '% Cu';
     const d = r.detail;
     const when = new Date(record.finishedAt);
 
@@ -75,7 +79,7 @@
       stat(Math.round(d.efficiency.utilisation * 100) + '%', 'Loading unit utilisation'),
       stat(d.efficiency.avgQueueMin.toFixed(1) + ' min', 'Avg truck queue per load'),
       stat(d.decisions.avgResponse == null ? '—' : d.decisions.avgResponse.toFixed(0) + ' s', 'Avg radio response time'),
-      stat(Math.round(s.totals.oreRom).toLocaleString() + ' t', 'Ore to ROM stockpile'),
+      stat(Math.round(s.totals.oreRom).toLocaleString() + ' t', 'Ore to stockpile'),
       stat(s.idleTruckHours.toFixed(1) + ' h', 'Truck hours parked / idle'),
       stat(String(s.violations.filter((v) => v.category === 'safety').length), 'Safety incidents')
     ].join('');
@@ -114,7 +118,7 @@
       '<div class="rep-head">' +
         '<div><p class="eyebrow">' + (s.practice ? 'Practice debrief' : 'Assessment debrief') + '</p>' +
         '<h1>' + esc(c.name || 'Practice') + '</h1>' +
-        '<p class="rep-meta">' + esc(s.scenarioName) + ' · ' + when.toLocaleString() +
+        '<p class="rep-meta">' + esc(s.siteName || 'Demo Copper Mine') + ' · ' + esc(s.scenarioName) + ' · ' + when.toLocaleString() +
         (c.role ? ' · ' + esc(c.role) : '') + (c.years != null && c.name ? ' · ' + esc(c.years) + ' yrs mining' : '') + (c.ref ? ' · ID ' + esc(c.ref) : '') + '</p></div>' +
         '<div class="rep-score"><div class="num">' + r.overall + '</div><div class="of">overall / 100</div>' +
         '<div class="band ' + r.recommendation.band + '">' + esc(r.recommendation.label) + '</div></div>' +
@@ -125,7 +129,7 @@
           '<h2>Strengths</h2><div class="pill-list">' + r.strengths.map((x) => '<span class="pill">' + esc(x) + '</span>').join('') + '</div>' +
           '<h2>Development areas</h2><div class="pill-list">' + (r.development.length ? r.development.map((x) => '<span class="pill">' + esc(x) + '</span>').join('') : '<span class="muted small">None below 80</span>') + '</div>' +
           '<h2>Shift numbers</h2><div class="stat-grid">' + stats + '</div></div>' +
-        '<div class="panel full"><h2>Crusher feed blend (rolling 6 loads)</h2>' + blendChart(s) + '<p class="muted small">Green band is the ' + s.blendSpec.min + '–' + s.blendSpec.max + '% specification. Blend is only scored once both ore shovels have been running for 20 minutes.</p></div>' +
+        '<div class="panel full"><h2>Crusher feed blend (rolling 6 loads, ' + esc(unit) + ')</h2>' + blendChart(s) + '<p class="muted small">Green band is the ' + s.blendSpec.min + '–' + s.blendSpec.max + ' ' + esc(unit) + ' specification. Blend is only scored once every ore loading unit has been available for 20 minutes.</p></div>' +
         '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
         '<div class="panel"><h2>Incidents</h2>' + violations + '</div>' +
         '<div class="panel"><h2>Response to disruptions</h2>' + disruptions + '</div>' +

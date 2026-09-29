@@ -57,6 +57,13 @@
     const CRUSHER = mine.crusher() ? mine.crusher().id : null;
     if (GRADE_MODE === 'blend' && !CRUSHER) throw new Error('Blend grade control needs a crusher dump');
     const oreClassOf = (shovel) => shovel.oreClass || (scenario.blend && shovel.grade >= scenario.blend.max ? 'hg' : 'lg');
+    // Stockpile routing key: a named ore type (e.g. 'MC Blue') or HG/LG class.
+    const oreKey = (shovel) => shovel.oreType || oreClassOf(shovel);
+    const accepts = (dump) => dump.oreTypes || (dump.gradeClass ? [dump.gradeClass] : null);
+    const oreTypeName = (key) => {
+      const t = (site.oreTypes || []).find((x) => x.id === key);
+      return t ? t.name : String(key).toUpperCase();
+    };
     const roleOf = (dumpId) => (DUMPS.find((d) => d.id === dumpId) || {}).role;
     const rng = mulberry32(opts.seed != null ? opts.seed : (scenario.seed || 1));
     const jitter = (spread) => 1 + (rng() * 2 - 1) * spread;
@@ -109,7 +116,8 @@
     }
     for (const def of DUMPS) {
       state.dumps[def.id] = Object.assign({}, def, {
-        status: 'operating', until: 0, queue: [], serving: [], tonnes: 0, tips: 0
+        status: def.closed ? 'down' : 'operating', until: def.closed ? Infinity : 0,
+        downReason: def.closed || null, queue: [], serving: [], tonnes: 0, tips: 0
       });
     }
     scenario.fleet.forEach((f, i) => {
@@ -349,7 +357,10 @@
       if (shovel.material === 'waste') return (site.wasteDumpFor && site.wasteDumpFor[shovel.id]) || mine.wasteDump().id;
       if (GRADE_MODE === 'blend') return CRUSHER;
       const piles = mine.dumpsByRole('stockpile');
-      const match = piles.find((d) => d.gradeClass === oreClassOf(shovel));
+      const key = oreKey(shovel);
+      const planned = site.oreDumpFor && site.oreDumpFor[shovel.id] && state.dumps[site.oreDumpFor[shovel.id]];
+      if (planned && (accepts(planned) || []).includes(key)) return planned.id;
+      const match = piles.find((d) => (accepts(d) || []).includes(key));
       return (match || piles[0]).id;
     }
 
@@ -359,6 +370,7 @@
       // The load goes to the dump assigned at loading time; a later change of
       // circuit only applies after this load is tipped.
       truck.load = { material: shovel.material, grade, tonnes, source: shovel.id, dump: truck.loadDump };
+      if (shovel.material === 'ore') truck.load.oreType = oreKey(shovel);
       shovel.loads++;
       shovel.tonnes += tonnes;
       routeTo(truck, truck.load.dump, 'toDump');
@@ -386,12 +398,12 @@
         state.totals.oreCrusher += load.tonnes;
       } else if (dump.role === 'stockpile') {
         state.totals.oreRom += load.tonnes;
-        if (dump.gradeClass) {
-          const cls = oreClassOf(state.shovels[load.source]);
-          tip.oreClass = cls;
-          tip.correctFinger = cls === dump.gradeClass;
+        const ok = accepts(dump);
+        if (ok) {
+          tip.oreType = load.oreType;
+          tip.correctFinger = ok.includes(load.oreType);
           if (!tip.correctFinger) {
-            violation('minor', 'process', truck.id + ' tipped ' + cls.toUpperCase() + ' ore on the ' + dump.name + ' (grade misrouted).', 'misroute');
+            violation('minor', 'process', truck.id + ' tipped ' + oreTypeName(load.oreType) + ' ore on the ' + dump.name + ' (grade misrouted).', 'misroute');
           }
         }
       } else {
@@ -720,6 +732,23 @@
           );
           break;
         }
+        case 'oreChange': {
+          // Grade control moves a loading unit into a different ore polygon.
+          const s = state.shovels[ev.shovel];
+          const from = oreKey(s);
+          s.oreType = ev.oreType;
+          if (ev.label) s.label = ev.label;
+          alert('warn', ev.text || s.name + ' is now loading ' + oreTypeName(ev.oreType) + ' (was ' + oreTypeName(from) + ').');
+          addDisruption(
+            { id: 'ore-' + s.id + '-' + state.t, type: 'oreChange', label: 'Re-route ' + s.id + ' to ' + oreTypeName(ev.oreType), start: state.t, target: 5 * 60, limit: 20 * 60 },
+            {
+              resolved: () => state.trucks.filter((tr) => tr.assign.shovel === s.id)
+                .every((tr) => (accepts(state.dumps[tr.assign.dump]) || []).includes(ev.oreType)),
+              ended: () => false
+            }
+          );
+          break;
+        }
         case 'shovelReady': {
           // A loading unit released mid-shift (e.g. newly commissioned).
           const s = state.shovels[ev.shovel];
@@ -876,6 +905,8 @@
       const truck = truckById(truckId);
       if (!truck) return { ok: false, reason: 'Unknown truck' };
       const next = { shovel: a.shovel || truck.assign.shovel, dump: a.dump || truck.assign.dump };
+      if (next.shovel !== 'PARK' && !state.shovels[next.shovel]) return { ok: false, reason: 'Unknown loading unit ' + next.shovel };
+      if (!state.dumps[next.dump]) return { ok: false, reason: 'Unknown dump ' + next.dump };
       if (next.shovel === truck.assign.shovel && next.dump === truck.assign.dump) return { ok: true };
       const prev = truck.assign;
       truck.assign = next;
@@ -893,8 +924,11 @@
         }
       }
       if (dumpChanged && !shovelChanged && truck.phase === 'loading') truck.loadDump = next.dump;
-      // Changing only the dump on the same circuit redirects the load on board.
-      if (dumpChanged && !shovelChanged && truck.load && truck.load.source === next.shovel) {
+      // Changing only the dump on the same circuit redirects the load on board,
+      // provided the new destination suits that load (e.g. crusher down, go to
+      // the ROM stockpile). Otherwise the change applies from the next load —
+      // an ore polygon change must not send ore already loaded to the wrong finger.
+      if (dumpChanged && !shovelChanged && truck.load && truck.load.source === next.shovel && suitsLoad(state.dumps[next.dump], truck.load)) {
         truck.load.dump = next.dump;
         if (truck.phase === 'toDump') {
           routeTo(truck, next.dump, 'toDump');
@@ -904,6 +938,13 @@
         }
       }
       return { ok: true };
+    }
+
+    function suitsLoad(dump, load) {
+      if (load.material === 'waste') return dump.role === 'waste';
+      if (dump.role === 'waste') return false;
+      const ok = accepts(dump);
+      return !ok || ok.includes(load.oreType);
     }
 
     function sendToFuel(truckId, viaRadio) {
@@ -1066,11 +1107,11 @@
         gradeControl: GRADE_MODE,
         routing: (() => {
           const oreTips = state.tips.filter((x) => x.correctFinger != null);
-          const byDump = mine.DUMPS.filter((d) => d.gradeClass).map((d) => {
+          const byDump = mine.DUMPS.filter((d) => accepts(d)).map((d) => {
             const here = oreTips.filter((x) => x.dump === d.id);
-            return { id: d.id, name: d.name, gradeClass: d.gradeClass,
-              hg: here.filter((x) => x.oreClass === 'hg').length, lg: here.filter((x) => x.oreClass === 'lg').length };
-          });
+            return { id: d.id, name: d.name, loads: here.length, wrong: here.filter((x) => !x.correctFinger).length,
+              wrongTypes: [...new Set(here.filter((x) => !x.correctFinger).map((x) => oreTypeName(x.oreType)))] };
+          }).filter((b) => b.loads > 0);
           return { oreTips: oreTips.length, correct: oreTips.filter((x) => x.correctFinger).length, byDump };
         })(),
         totals: Object.assign({}, state.totals),
@@ -1082,6 +1123,7 @@
         loads,
         avgQueueMinPerLoad: loads ? state.totals.queueTime / loads / 60 : 0,
         queueAllowanceMin: site.queueAllowanceMin || 0,
+        utilisationRange: site.utilisationRange || null,
         idleTruckHours: state.totals.idleTime / 3600,
         shovels,
         crusher: {

@@ -177,6 +177,24 @@
     function drawDumps(state) {
       for (const d of Object.values(state.dumps)) {
         const n = P.NODES[d.id];
+        if (d.marker === 'finger') {
+          // ROM pad finger: small marker in the ore type's colour.
+          const r = Math.max(6, 26 * scale);
+          ctx.beginPath();
+          ctx.arc(sx(n.x), sy(n.y), r, 0, Math.PI * 2);
+          ctx.fillStyle = d.color || COLORS.hg;
+          ctx.globalAlpha = d.status === 'operating' ? 0.85 : 0.3;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          if (d.status !== 'operating') {
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = COLORS.danger;
+            ctx.stroke();
+          }
+          text(d.short || d.name, sx(n.x), sy(n.y) + r + 8, d.status === 'operating' ? COLORS.label : COLORS.danger, 9);
+          if (d.queue.length) text(String(d.queue.length), sx(n.x), sy(n.y), '#10161b', 9.5);
+          continue;
+        }
         const w = Math.max(40, 150 * scale);
         const h = Math.max(22, 80 * scale);
         const x = sx(n.x) - w / 2;
@@ -230,7 +248,7 @@
         ctx.strokeStyle = SHOVEL_STATUS_COLOR[s.status] || COLORS.ok;
         ctx.stroke();
         text(s.id, x, y, '#fff', 11);
-        const sub = s.material === 'waste' ? 'Waste' : view.tag(s.id) + ' ' + view.grade(s.grade);
+        const sub = view.loadingText(s);
         text(sub, x, y + r + 10, COLORS.label, 10);
         if (s.status !== 'operating') {
           text(s.status.toUpperCase(), x, y - r - 10, SHOVEL_STATUS_COLOR[s.status], 10.5);

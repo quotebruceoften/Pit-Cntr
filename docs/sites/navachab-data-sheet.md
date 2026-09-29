@@ -1,6 +1,6 @@
 # QKR Navachab: site data sheet
 
-Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated. Fleet, loading units, pushbacks, ore flow and radio channels are confirmed by site staff; the pit geometry, face assignments, grades, targets and procedures are still placeholders. The table below shows what came from public sources and what needs confirming. It also doubles as the data-collection template for onboarding any other mine.
+Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated. Fleet, loading units, pushbacks, cycle times, ROM fingers, waste dumps, ore flow, radio channels and FMS status are confirmed by site staff; the pit geometry, ore types per unit, targets and procedures are still placeholders. The table below shows what came from public sources and what needs confirming. It also doubles as the data-collection template for onboarding any other mine.
 
 ## From public sources
 
@@ -20,40 +20,49 @@ Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated.
 |---|---|
 | Role assessed | The **pit-area controller** (Channel 1). A second controller runs the rehandle area on Channel 3 |
 | Active pit | Main Pit only, loading in pushbacks PB3, PB4 and PB5. PB6 is being prepared for waste stripping and is not released (its access road is drawn closed) |
+| Cycle times | PB3 and PB4 are near the end of their life and very deep: about **45 min per cycle** to any stockpile or waste dump, so about 1 load per truck per hour. Modelled with real road lengths (PB3/PB4 ≈ 44–47 min), which makes the fleet truck-limited |
 | Loading units | EX03 Hitachi EX1900 · EX04 Hitachi EX1200 · EX05, EX07, EX08 Komatsu PC2000 · EX10 Komatsu PC2000 (new, being assembled in the workshop; starts as "Workshop" and is released mid-shift in the day scenario) · NEX1400 CAT 350 (Trollope Mining) |
 | QKR haul fleet | 20 × Komatsu HD785, fleet numbers 16, 17, 19, 22, 25, 26, 27, 29, 33, 35, 36, 42–50 |
 | Contractor haul fleet | Eitavelo Mining: 14 × CAT 777E, fleet numbers 71, 41–53 |
 | Dispatch | Pit control dispatches all 34 trucks as one fleet on shared loading units |
-| Ore flow | Pit trucks tip ore on stockpiles at the crusher (ROM pad). Loaders and Komatsu HD325/HD465 trucks rehandle it to the crusher. Grade control is therefore scored as ore reaching the correct ROM finger, not as a crusher blend |
+| ROM stockpiles | One finger per ore type, named by the ore loaded. Highest grades: MC Blue, MC Red, Lime; then FW Red, FW Green. Also Purple DM, Purple HG, Brown, Orange 1, Orange 2. Low grade (stockpiled further from the crusher): Yellow, LG Brown, Purple LG |
+| Ore flow | Pit trucks tip ore on the finger for its ore type. Loaders and Komatsu HD325/HD465 trucks rehandle it to the crusher. Grade control is scored as ore reaching the correct finger. A unit can move into a new ore polygon mid-shift (a grade control call), and its trucks must then be re-routed |
+| Plants | CIP (main gold extraction), PCP and Argo (mainly recovery). Map annotation only |
+| Waste dumps | TSF Projects is the main waste dump. HME waste dump is closed (dumped to its limit); it is drawn as closed and trucks sent there cannot tip |
 | Radio | Digital radio: pit on Channel 1, rehandle on Channel 3 |
-| Fleet management | An FMS is in use |
+| FMS | None yet. A Hexagon FMS is being installed and goes live next year. Dispatch is by radio, so the simulator's dispatch aids (wrong-dump warnings, auto-filled dumps) are switched off for Navachab |
+| Fatigue | An in-cab fatigue monitoring system is in use. The night scenario includes a monitoring-system alert |
 
 ## To confirm with the site (placeholders in use)
 
 | # | Item | Placeholder now | What to get |
 |---|---|---|---|
-| 1 | Pit and road layout | Schematic Main Pit: PB3 at the bottom, PB4 west, PB5 east, PB6 north-west; one switchback main ramp | Current pit plan showing ramps, pushback access roads, intersections and give-ways |
-| 2 | Haul distances and cycle times | Hauls of about 1.5–2.5 km | Typical haul distance and cycle time per circuit (from the FMS) |
-| 3 | Truck callsigns and payloads | Numbers are real; the "HT" (QKR) and "EV" (Eitavelo) prefixes are placeholders, since both fleets use 42–50. 91 t nominal payload for both | How trucks are called on the radio and shown in the FMS (e.g. "Q42" / "E42"?), and target payloads |
-| 4 | Unit face assignments | EX03 PB5 waste · EX04 PB3 HG ore · EX05 PB4 LG ore · EX07 PB4 waste · EX08 PB5 waste · EX10 PB5 waste once released · NEX1400 PB3 selective HG ore | Which pushback and face each unit is on, and whether it is loading ore or waste. Typical load times per unit |
-| 5 | NEX1400 role | Modelled as a slow, selective ore loader (about 5.5 min per HD785 load) | What the Trollope CAT 350 actually does (selective ore mining, clean-up, loading which trucks?) |
-| 6 | ROM pad fingers | HG finger, LG finger and an HG overflow tip | Actual finger names and grade classes (HG / MG / LG / marginal?), and the procedure when a finger is closed |
-| 7 | Face grades | HG 2.6 and 2.4 g/t, LG 0.9 g/t (display only) | Typical grades per class |
-| 8 | Waste dumps | North WRD and East WRD | Actual waste dump and tip names, and which pushback goes where |
-| 9 | Targets | Shift targets calibrated from the expert controller | Planned shift tonnes for ore and waste |
-| 10 | Shift pattern | 06:00 day shift, 18:00 night shift | Shift start times, crib times and handover practice |
-| 11 | Lightning TARP | Warning at about 10 km: stop explosives work, get people on foot under cover. Stand-down within 5 km: park the fleet, operators stay in cabs | Exact trigger distances, levels and required actions |
-| 12 | Geotech TARP | Radar alarm leads to immediate evacuation and an exclusion zone | Radar/prism trigger levels and response steps; which walls are monitored |
-| 13 | Blast procedure | 10-min guard period, all-clear from pit control, 20-min re-entry | Guard times, exclusion distances, who gives the all-clear, re-entry rules |
-| 14 | Light-vehicle rules | Positive radio communication before entering or crossing haul roads | LV rules, flags and beacons, call-up procedures |
-| 15 | Fatigue management | Stop safely and send a relief operator | Fatigue procedure and any fatigue-detection system in use |
-| 16 | Controller coordination | Rehandle controller calls pit control to close a ROM tip; rehandle trucks that call on Channel 1 are sent to Channel 3 | How the two controllers coordinate (radio, phone, FMS) and who owns the ROM pad tip heads |
-| 17 | Contractor rules | Contractor supervisor asks by radio; the same authorisation (VOC) rules apply to both fleets | How pit control and the Eitavelo and Trollope supervisors communicate, and any contract rules that affect dispatch |
-| 18 | FMS | Assignment by hand in the simulator's fleet table | Which FMS it is, and whether controllers assign trucks manually or the FMS auto-dispatches (this changes what the assessment should test) |
+| 1 | Pit and road layout | Schematic Main Pit: PB3 at the bottom, PB4 west, PB5 east, PB6 north-west; one main ramp | Current pit plan: ramps, pushback access roads, intersections, give-ways |
+| 2 | PB5 cycle time | About 26 min to TSF | Typical PB5 cycle time |
+| 3 | Ore type per unit | Start of shift: EX04 MC Blue, NEX1400 MC Red, EX05 FW Green. Scripted polygon changes: EX05 to LG Brown (day), EX04 to Lime (storm), NEX1400 to Purple HG (night) | Which ore types each pushback currently produces, and how often units move between polygons |
+| 4 | ROM pad layout | Near fingers in rows beside the crusher; Yellow, LG Brown and Purple LG about 1.3 km further | Finger positions and distances; what "DM" means for Purple DM |
+| 5 | Truck callsigns and payloads | Real numbers; the "HT" (QKR) and "EV" (Eitavelo) prefixes are placeholders, since both fleets use 42–50. 91 t nominal payload | How trucks are called on the radio, and target payloads |
+| 6 | NEX1400 role | Slow, selective ore loader (about 5.5 min per HD785 load) | What the Trollope CAT 350 actually does |
+| 7 | Targets | Shift targets calibrated from the expert controller | Planned shift tonnes for ore and waste |
+| 8 | Shift pattern | 06:00 day shift, 18:00 night shift | Shift start times, crib times and handover practice |
+| 9 | Lightning TARP | Warning at about 10 km: stop explosives work, get people on foot under cover. Stand-down within 5 km: park the fleet, operators stay in cabs | Exact trigger distances, levels and required actions |
+| 10 | Geotech TARP | Radar alarm leads to immediate evacuation and an exclusion zone | Radar/prism trigger levels and response steps; which walls are monitored |
+| 11 | Blast procedure | 10-min guard period, all-clear from pit control, 20-min re-entry | Guard times, exclusion distances, who gives the all-clear, re-entry rules |
+| 12 | Light-vehicle rules | Positive radio communication before entering or crossing haul roads | LV rules, flags and beacons, call-up procedures |
+| 13 | Fatigue response | Monitoring alert: stop at the next safe bay, relief operator, supervisor informed | The site's procedure for fatigue-system alerts and self-reported fatigue, and the system's name |
+| 14 | Controller coordination | Rehandle controller calls pit control to close a finger; rehandle trucks calling on Channel 1 are sent to Channel 3 | How the two controllers coordinate, and who owns the finger tip heads |
+| 15 | Contractor rules | Contractor supervisor asks by radio; the same authorisation (VOC) rules apply to both fleets | How pit control and the Eitavelo and Trollope supervisors communicate, and any contract rules that affect dispatch |
+
+## After the Hexagon FMS goes live
+
+Once the FMS is live, the pit controller's job shifts toward supervising automatic assignments and handling exceptions. At that point:
+
+- turn dispatch aids back on (`dispatchAids: true`),
+- consider adding FMS-specific scenarios, such as an FMS outage that forces a fall-back to radio dispatch, or overriding a bad auto-assignment.
 
 ## Before using this for real hiring at Navachab
 
-- Get items 11–15 checked by the safety or training department. Radio answers are scored as "best" or "unsafe" against these procedures.
+- Get items 9–13 checked by the safety or training department. Radio answers are scored as "best" or "unsafe" against these procedures.
 - Get a senior pit controller to do a practice run and give feedback on realism.
 - Run a pilot with 3–5 existing pit controllers to check the scores match their known ability.
 - Then set `status: 'confirmed'` in the profile.

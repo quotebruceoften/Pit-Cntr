@@ -165,7 +165,7 @@ select { padding-right: 6px; }
 .bottom-row { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 10px; height: 214px; flex-shrink: 0; border-top: 1px solid var(--line); }
 .bottom-row .panel { padding: 10px 12px; overflow: auto; }
 
-.equip { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; align-content: start; }
+.equip { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; align-content: start; }
 .equip-card .ec-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .equip-card .chip { font-size: 10px; padding: 1px 5px; }
 .equip-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }

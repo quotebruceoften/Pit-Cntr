@@ -43,6 +43,10 @@ lib.registerSite({
                                       // blend: trucks tip ore into the crusher, scored on feed blend
                                       // stockpiles: trucks tip on ROM fingers by grade class
                                       //   (a separate rehandle crew feeds the plant), scored on routing
+  oreTypes: [{ id: 'MCB', name: 'MC Blue', color: '#3b82f6', tier: 'high', far? }, …],
+                                      // stockpile mode: named ore types, one ROM finger each
+  dispatchAids: false,                // no FMS on site: no wrong-dump warnings or auto dumps
+  utilisationRange: [0.1, 0.35],      // truck-limited sites: utilisation scored on a lower scale
   planWeights: { EX03: 7, … },        // balanced trucks per unit (used by the expert bot)
   oreDumpFor: { EX04: 'ROMH', … },    // stockpile mode: planned finger per ore unit
   wasteDumpFor: { EX03: 'NWRD', … },  // default waste dump per waste unit
@@ -59,7 +63,7 @@ lib.registerSite({
 | `width`, `height` | Map extent in map units |
 | `metersPerUnit` | Converts map distances to haul metres. Tune it so cycle times match the site's |
 | `nodes` | `{ id: { x, y, label? } }`. Every loading unit and dump needs a node with the same id |
-| `edges` | `[a, b, { ramp: true, upFrom: 'lowerNode', closed: true }?]`. Ramp segments slow loaded trucks going uphill. Closed roads (areas not yet released) are drawn but never used for haulage |
+| `edges` | `[a, b, { ramp: true, upFrom: 'lowerNode', closed: true, lengthM: 1700 }?]`. `lengthM` sets the real road length when the map is only a schematic (e.g. deep pits with long ramps). Ramp segments slow loaded trucks going uphill. Closed roads (areas not yet released) are drawn but never used for haulage |
 | `shovels` | `{ id, name, material: 'ore' \| 'waste', oreClass?: 'hg' \| 'lg', grade, label, loadSec, safePos? }`. `safePos` is where the unit trams to for a blast |
 | `dumps` | `{ id, name, short, role: 'crusher' \| 'stockpile' \| 'waste', gradeClass?, bays, dumpSec }`. Needs a crusher or ore stockpile, and at least one waste dump. `gradeClass` marks a ROM finger |
 | `base` | Node id of the workshop, fuel bay and go-line |
@@ -81,7 +85,8 @@ Event types (the `at` field is minutes from the start of the shift):
 | `radio` | Use the builders in `lib.scenarioLib`, or write your own: `from`, `message`, `options[{ text, rating, feedback, effects?, severity? }]`, `timeout?`, `timeoutEffects?` |
 | `shovelDown` | `shovel`, `minutes`, `reason` |
 | `crusherDown` | `minutes`, `reason` |
-| `dumpDown` | `dump`, `minutes`, `reason`. Closes any tip, e.g. a ROM finger |
+| `dumpDown` | `dump`, `minutes`, `reason`. Closes any tip, e.g. a ROM finger. A dump with `closed: '<reason>'` in the layout is closed for the whole shift |
+| `oreChange` | `shovel`, `oreType`. Grade control moves a unit into a new ore polygon; loads already on board keep their finger, and the controller must re-route the rest (pair it with `gradeControlCall`) |
 | `shovelReady` | `shovel`, `minTrucks`, `text`. Releases a unit that started with `shovelStatus: { ID: 'commissioning' }` on the scenario |
 | `truckBreakdown` | `truck`, `minutes`, `text`, `radio?` |
 | `fuelLow` | `truck`, `minutes`, `radio?` |
@@ -92,7 +97,7 @@ Event types (the `at` field is minutes from the start of the shift):
 
 Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`.
 
-Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea` (plus `…FollowUp` consequences).
+Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea`, `fatigueAlarm`, `gradeControlCall`, `closedDumpRequest` (plus `…FollowUp` consequences).
 
 ## Calibration
 

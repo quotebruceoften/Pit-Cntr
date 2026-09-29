@@ -394,12 +394,14 @@
     timeoutText: 'A rehandle operator called pit control and got no answer.'
   });
 
-  const rehandleClosure = (at, controller, finger, alternative) => ({
+  // plan: what pit control will do with the affected trucks, e.g.
+  // 'I'll redirect them to the HG overflow tip' or 'I'll move EX04's trucks onto waste'.
+  const rehandleClosure = (at, controller, finger, plan) => ({
     at, type: 'radio', id: 'rehandle-closure',
     from: controller,
     message: 'Pit control, ' + controller + '. I need to close the ' + finger + ' tip head for about 25 minutes — the loader is cleaning up and rebuilding the windrow. Can you keep your trucks off it?',
     options: [
-      { text: 'Copy. I\'ll redirect trucks for the ' + finger + ' to the ' + alternative + ' now and confirm when they\'re clear. Call me when it\'s open again.', rating: 'best',
+      { text: 'Copy. ' + plan + ' now and confirm when they\'re clear of the ' + finger + '. Call me when it\'s open again.', rating: 'best',
         feedback: 'Keeps haul trucks away from the loader, keeps the grade on the right stockpile and closes the loop.' },
       { text: 'Tip them on the other grade finger for now.', rating: 'poor',
         feedback: 'Mixing grades on the wrong finger defeats grade control on the ROM pad.' },
@@ -424,6 +426,62 @@
         feedback: 'Release of an area is a formal step, not something agreed on the radio between operators.' }
     ],
     timeoutText: 'An operator asked about using an unreleased area and got no answer.'
+  });
+
+  // Alert from an in-cab fatigue monitoring system rather than the operator.
+  const fatigueAlarm = (at, truck, system) => ({
+    at, type: 'radio', id: 'fatigue-alarm',
+    from: system || 'Fatigue monitoring system',
+    message: 'FATIGUE ALERT — ' + truck + ' operator: two microsleep events detected in the last 10 minutes.',
+    options: [
+      { text: 'Call ' + truck + ' now: stop at the next safe bay and park up. Send the supervisor with a relief operator, and log the event.', rating: 'best',
+        effects: [{ type: 'hold', truck, minutes: 25, reason: 'fatigue relief after monitoring alert' }],
+        feedback: 'Repeated microsleeps mean the operator must stop driving. Act on the system, not on how the operator says they feel.' },
+      { text: 'Call the operator and ask if they\'re OK; carry on if they say yes.', rating: 'poor',
+        effects: [{ type: 'flag', key: 'fatigueIgnored' }],
+        feedback: 'Fatigued people are poor judges of their own fatigue. Two events need the operator stood down.' },
+      { text: 'Probably a false alarm — that system is too sensitive. Acknowledge and ignore.', rating: 'unsafe', severity: 'major',
+        effects: [{ type: 'flag', key: 'fatigueIgnored' }],
+        feedback: 'Dismissing fatigue alerts defeats the control. Treat every alert as real until the supervisor has checked.' }
+    ],
+    timeoutEffects: [
+      { type: 'flag', key: 'fatigueIgnored' },
+      { type: 'violation', severity: 'major', category: 'safety', text: 'Fatigue monitoring alert for ' + truck + ' was not acted on.' }
+    ],
+    timeoutText: 'A fatigue monitoring alert went unanswered.'
+  });
+
+  // Grade control moves a unit into a different ore polygon; the controller
+  // must re-route its trucks to the matching ROM finger (see 'oreChange' event).
+  const gradeControlCall = (at, unit, oreName, stockpile) => ({
+    at, type: 'radio', id: 'grade-control',
+    from: 'Grade control geologist',
+    message: 'Pit control, grade control. ' + unit + ' is moving into the ' + oreName + ' polygon from the next bucket. All ' + unit + ' loads go to the ' + stockpile + ' until I tell you otherwise.',
+    options: [
+      { text: 'Copy — I\'ll re-route every truck on ' + unit + ' to the ' + stockpile + ' now and confirm when done. Trucks already loaded finish to their original finger.', rating: 'best',
+        feedback: 'Acts at once, closes the loop with the geologist, and handles loads already in transit correctly.' },
+      { text: 'Copy.', rating: 'ok',
+        feedback: 'Acknowledged, but no confirmation back. The geologist cannot tell when the change took effect.' },
+      { text: 'Just tell the ' + unit + ' operator to let the truck drivers know.', rating: 'poor',
+        feedback: 'Destinations are the controller\'s job. Relaying through the loader operator risks misrouted loads.' }
+    ],
+    timeoutText: 'A grade control change went unanswered.'
+  });
+
+  // An operator asks to use a dump that has been closed.
+  const closedDumpRequest = (at, truck, dumpName, reason, alternative) => ({
+    at, type: 'radio', id: 'closed-dump',
+    from: truck + ' operator',
+    message: truck + ' here. The ' + dumpName + ' looks clear and it\'s much closer than ' + alternative + ' — can I tip there this load?',
+    options: [
+      { text: 'Negative. The ' + dumpName + ' is closed — ' + reason + '. Tip at ' + alternative + '.', rating: 'best',
+        feedback: 'A closed dump has no working tip edge or bund. Only open, inspected tips may be used.' },
+      { text: 'OK, but tip short of the edge.', rating: 'unsafe', severity: 'major',
+        feedback: 'Tipping on a closed dump at its limit risks going over an unbunded edge.' },
+      { text: 'Ask the dozer operator there whether it\'s OK.', rating: 'poor',
+        feedback: 'Opening or closing a dump is a formal decision, not agreed between operators on the radio.' }
+    ],
+    timeoutText: 'An operator asked about tipping on a closed dump and got no answer.'
   });
 
   // ------------------------------------------------------------ site registry
@@ -451,7 +509,7 @@
   return {
     SITES, registerSite, getSite, formatGrade,
     scenarioLib: {
-      fleet, mixedFleet, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
+      fleet, mixedFleet, fatigueAlarm, gradeControlCall, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
       lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
       geotech, nearMiss, windrow, unknownLv, waterCart,
       lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp

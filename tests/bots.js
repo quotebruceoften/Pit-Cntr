@@ -50,9 +50,6 @@ function expertController(sim, opts) {
       sim.tram(b.shovel, 'face');
     }
 
-    const avail = Object.values(s.shovels)
-      .filter((sh) => sh.status === 'operating' && !(blastActive && b.shovel === sh.id))
-      .map((sh) => sh.id);
     const open = (id) => s.dumps[id].status === 'operating';
     // Right destination for a loading unit's material, avoiding closed tips.
     const dumpFor = (unit, current) => {
@@ -64,10 +61,17 @@ function expertController(sim, opts) {
         return open(planned) ? planned : same((d) => d.role === 'waste' && open(d.id))[0] || planned;
       }
       if (!stockpileMode) return open(crusher) || !stockpile ? crusher : stockpile.id;
+      // Route by the unit's current ore type (it can change mid-shift).
+      const key = sh.oreType || sim.mine.DUMPS.find((d) => d.id === sim.site.oreDumpFor[unit]).gradeClass;
+      const takes = (d) => (d.oreTypes || (d.gradeClass ? [d.gradeClass] : [])).includes(key);
       const planned = sim.site.oreDumpFor[unit];
-      const cls = sim.mine.DUMPS.find((d) => d.id === planned).gradeClass;
-      return open(planned) ? planned : same((d) => d.gradeClass === cls && open(d.id))[0] || planned;
+      if (planned && takes(sim.mine.DUMPS.find((d) => d.id === planned)) && open(planned)) return planned;
+      return same((d) => takes(d) && open(d.id))[0] || null;
     };
+    // A unit is usable if it is loading and its material has somewhere to go.
+    const avail = Object.values(s.shovels)
+      .filter((sh) => sh.status === 'operating' && !(blastActive && b.shovel === sh.id) && dumpFor(sh.id, null))
+      .map((sh) => sh.id);
 
     const released = new Set();
     for (const d of s.disruptions) if (d.type === 'available') d.label.replace('Deploy ', '').split(', ').forEach((id) => released.add(id));
@@ -93,6 +97,7 @@ function expertController(sim, opts) {
         const sh = s.shovels[tr.assign.shovel];
         if (!sh) continue;
         const dump = dumpFor(tr.assign.shovel, tr.assign.dump);
+        if (!dump) continue;
         if (tr.assign.dump !== dump) sim.assign(tr.id, { dump });
       }
     }

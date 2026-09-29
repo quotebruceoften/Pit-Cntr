@@ -7,7 +7,8 @@
  *   metersPerUnit          converts map units to haul distance
  *   nodes   { id: {x, y, label?} }
  *   edges   [[a, b, {ramp, upFrom, closed}?]]   upFrom = low end of a ramp;
- *           closed = drawn on the map but not usable for haulage
+ *           closed = drawn on the map but not usable for haulage;
+ *           lengthM = real road length in metres (overrides the drawn length)
  *   shovels [{id, name, material: 'ore'|'waste', grade, label, loadSec, safePos?}]
  *   dumps   [{id, name, short, role: 'crusher'|'stockpile'|'waste', bays, dumpSec}]
  *   base    node id of the workshop / fuel bay / go-line
@@ -48,7 +49,9 @@
       if (!NODES[a] || !NODES[b]) throw new Error('Road ' + a + '-' + b + ' references an unknown node');
       // Closed roads (e.g. an area not yet released) are drawn but never routed.
       if (opts && opts.closed) continue;
-      const len = Math.hypot(NODES[a].x - NODES[b].x, NODES[a].y - NODES[b].y) * metersPerUnit;
+      // lengthM gives the real road length when the map is only a schematic
+      // (e.g. a deep pit whose ramps are far longer than they look).
+      const len = opts && opts.lengthM ? opts.lengthM : Math.hypot(NODES[a].x - NODES[b].x, NODES[a].y - NODES[b].y) * metersPerUnit;
       const info = Object.assign({ a, b, len, ramp: false, upFrom: null }, opts || {});
       edgeIndex[key(a, b)] = info;
       edgeIndex[key(b, a)] = info;
@@ -71,6 +74,7 @@
     function shortestPath(from, to) {
       const k = key(from, to);
       if (pathCache[k]) return pathCache[k].slice();
+      if (!NODES[from] || !NODES[to]) throw new Error('Unknown location ' + (NODES[from] ? to : from));
       const dist = {};
       const prev = {};
       const open = new Set(Object.keys(NODES));

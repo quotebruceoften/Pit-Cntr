@@ -64,7 +64,10 @@
     let busy = 0;
     for (const sh of s.shovels) { op += sh.opTime; busy += sh.busyTime; }
     const util = op > 0 ? busy / op : 0;
-    const utilScore = ramp(util, 0.35, 0.85);
+    // Truck-limited sites (long cycles) cannot keep loading units busy, so a
+    // site can set the utilisation range that counts as poor → excellent.
+    const [uLo, uHi] = s.utilisationRange || [0.35, 0.85];
+    const utilScore = ramp(util, uLo, uHi);
     // Sites whose fleet is larger than the loading units can serve queue by
     // design; queueAllowanceMin shifts the scale so only avoidable queueing counts.
     const allow = s.queueAllowanceMin || 0;

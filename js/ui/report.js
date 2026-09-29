@@ -53,13 +53,11 @@
 
   // Grade control on ROM pad fingers: which ore class went where.
   function routingPanel(s) {
-    const rows = s.routing.byDump.map((b) => {
-      const wrong = b.gradeClass === 'hg' ? b.lg : b.hg;
-      return '<tr><td>' + esc(b.name) + ' <span class="muted small">(' + b.gradeClass.toUpperCase() + ')</span></td><td class="num">' + b.hg +
-        '</td><td class="num">' + b.lg + '</td><td class="num" style="color:' + (wrong ? 'var(--danger)' : 'var(--ok)') + '">' + wrong + '</td></tr>';
-    }).join('');
-    return '<div class="panel full"><h2>Ore routing to the ROM pad</h2><table class="data-table"><thead><tr><th>Stockpile</th><th class="num">HG loads</th><th class="num">LG loads</th><th class="num">Wrong grade</th></tr></thead><tbody>' +
-      rows + '</tbody></table><p class="muted small">Every ore load should be tipped on the finger for its grade class. Misrouted loads dilute the stockpile the rehandle controller feeds to the plant.</p></div>';
+    const rows = s.routing.byDump.map((b) =>
+      '<tr><td>' + esc(b.name) + '</td><td class="num">' + b.loads + '</td><td class="num" style="color:' + (b.wrong ? 'var(--danger)' : 'var(--ok)') + '">' + b.wrong +
+      '</td><td class="small">' + (b.wrongTypes.length ? esc(b.wrongTypes.join(', ')) : '<span class="muted">—</span>') + '</td></tr>').join('');
+    return '<div class="panel full"><h2>Ore routing to the ROM pad</h2><table class="data-table"><thead><tr><th>Stockpile</th><th class="num">Loads</th><th class="num">Wrong ore</th><th>Wrong ore types tipped here</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="4" class="muted">No ore tipped.</td></tr>') + '</tbody></table><p class="muted small">Every ore load should be tipped on the stockpile for its ore type. Misrouted loads contaminate the stockpile that the rehandle controller feeds to the plant.</p></div>';
   }
 
   function stat(value, label) {

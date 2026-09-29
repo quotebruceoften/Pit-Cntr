@@ -10,6 +10,12 @@
   function createSiteView(site, scenario, mine) {
     const blend = scenario.blend;
     const stockpileMode = site.gradeControl === 'stockpiles';
+    // Sites without an FMS get no dispatch aids (wrong-dump warnings, auto dumps).
+    const aids = site.dispatchAids !== false;
+    const oreTypes = {};
+    for (const t of site.oreTypes || []) oreTypes[t.id] = t;
+    const TIER_CLASS = { high: 'hg', mid: 'mg', low: 'lg' };
+    const oreTypeName = (id) => (oreTypes[id] ? oreTypes[id].name : id);
     const unit = site.commodity.gradeUnit;
     const decimals = site.commodity.gradeDecimals != null ? site.commodity.gradeDecimals : 2;
     const shovelById = {};
@@ -26,24 +32,35 @@
     }
     const CLASS_LABEL = { hg: 'HG', lg: 'LG', mg: 'Ore' };
     // Loading units may declare their ore class explicitly (stockpile sites).
-    const shovelClass = (s) => s.material === 'waste' ? 'waste' : (s.oreClass || oreClass(s.grade));
+    const shovelClass = (s) => {
+      if (s.material === 'waste') return 'waste';
+      if (s.oreType && oreTypes[s.oreType]) return TIER_CLASS[oreTypes[s.oreType].tier] || 'mg';
+      return s.oreClass || oreClass(s.grade);
+    };
+    // Live description of what a unit is loading (ore type can change mid-shift).
+    const loadingText = (s) => s.material === 'waste' ? 'Waste'
+      : s.oreType ? oreTypeName(s.oreType) : CLASS_LABEL[shovelClass(s)] + ' ' + grade(s.grade);
 
     function tag(shovelId) {
       const s = shovelById[shovelId];
       if (!s) return '';
-      return s.material === 'waste' ? 'Waste' : CLASS_LABEL[shovelClass(s)];
+      if (s.material === 'waste') return 'Waste';
+      return s.oreType ? 'ore' : CLASS_LABEL[shovelClass(s)];
     }
 
     function grade(g) {
       return g.toFixed(decimals) + ' ' + unit;
     }
 
-    function mismatch(shovelId, dumpId) {
-      const s = shovelById[shovelId];
+    // Pass the live shovel state so ore-type changes are respected.
+    function mismatch(shovelId, dumpId, liveShovel) {
+      if (!aids) return false;
+      const s = liveShovel || shovelById[shovelId];
       const d = dumpById[dumpId];
       if (!s || !d) return false;
       if (s.material === 'waste') return d.role !== 'waste';
       if (d.role === 'waste') return true;
+      if (d.oreTypes) return !d.oreTypes.includes(s.oreType);
       return !!(d.gradeClass && d.gradeClass !== shovelClass(s));
     }
 
@@ -54,6 +71,11 @@
       if (s.material === 'waste') return (site.wasteDumpFor && site.wasteDumpFor[shovelId]) || mine.wasteDump().id;
       const open = (id) => state.dumps[id].status === 'operating';
       if (stockpileMode) {
+        const live = state.shovels[shovelId];
+        if (live.oreType) {
+          const finger = mine.DUMPS.find((d) => d.oreTypes && d.oreTypes.includes(live.oreType));
+          return finger ? finger.id : null;
+        }
         const planned = (site.oreDumpFor && site.oreDumpFor[shovelId]) ||
           mine.DUMPS.find((d) => d.role === 'stockpile' && d.gradeClass === shovelClass(s)).id;
         if (open(planned)) return planned;
@@ -76,11 +98,20 @@
     const placeName = (id) => (dumpById[id] ? dumpById[id].short || dumpById[id].name : id === mine.BASE ? 'Workshop' : id);
 
     return {
-      site, scenario, mine, unit, decimals, stockpileMode, shovelClass,
+      site, scenario, mine, unit, decimals, stockpileMode, shovelClass, aids, oreTypes, oreTypeName, loadingText,
       shovelById, dumpById, oreClass, tag, grade, mismatch, defaultDump,
       shovelOptions, dumpOptions, placeName,
       classes, classIds, classIndex, classTag, mixedFleet: classIds.length > 1,
-      loadClass: (load) => load.material === 'waste' ? 'waste' : shovelById[load.source] ? shovelClass(shovelById[load.source]) : oreClass(load.grade)
+      loadClass: (load) => {
+        if (load.material === 'waste') return 'waste';
+        if (load.oreType && oreTypes[load.oreType]) return TIER_CLASS[oreTypes[load.oreType].tier] || 'mg';
+        return shovelById[load.source] ? shovelClass(shovelById[load.source]) : oreClass(load.grade);
+      },
+      loadText: (load) => {
+        if (load.material === 'waste') return 'Waste';
+        if (load.oreType && oreTypes[load.oreType]) return oreTypes[load.oreType].name;
+        return tag(load.source) + ' ' + load.grade.toFixed(decimals);
+      }
     };
   }
 

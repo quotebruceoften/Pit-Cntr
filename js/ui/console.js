@@ -164,8 +164,8 @@
       on(r.shovel, 'change', () => {
         const shovel = r.shovel.value;
         const upd = { shovel };
-        // Pick a sensible default dump when switching material type.
-        if (mismatch(shovel, r.dump.value)) upd.dump = view.defaultDump(shovel, state);
+        // With dispatch aids on, pick a sensible dump when switching units.
+        if (view.aids && mismatch(shovel, r.dump.value, state.shovels[shovel])) upd.dump = view.defaultDump(shovel, state);
         sim.assign(tr.id, upd);
         updateFleet(true);
       });
@@ -197,7 +197,7 @@
         if (dump) upd.dump = dump;
         else if (shovel && shovel !== 'PARK') {
           const tr = state.trucks.find((t) => t.id === id);
-          if (mismatch(shovel, tr.assign.dump)) upd.dump = view.defaultDump(shovel, state);
+          if (view.aids && mismatch(shovel, tr.assign.dump, state.shovels[shovel])) upd.dump = view.defaultDump(shovel, state);
         }
         sim.assign(id, upd);
       }
@@ -257,7 +257,9 @@
       if (!tr.load) return '<span class="load-dot" title="Empty"></span><span class="muted">—</span>';
       if (tr.load.material === 'waste') return '<span class="load-dot waste"></span>Waste';
       const cls = view.loadClass(tr.load);
-      return '<span class="load-dot ' + cls + '"></span>' + view.tag(tr.load.source) + ' ' + tr.load.grade.toFixed(view.decimals);
+      const t = tr.load.oreType && view.oreTypes[tr.load.oreType];
+      const style = t ? ' style="background:' + t.color + ';border-color:' + t.color + '"' : '';
+      return '<span class="load-dot ' + cls + '"' + style + '></span>' + esc(view.loadText(tr.load));
     }
 
     function updateFleet() {
@@ -272,7 +274,7 @@
         if (r.ld.innerHTML !== ld) r.ld.innerHTML = ld;
         if (document.activeElement !== r.shovel && r.shovel.value !== tr.assign.shovel) r.shovel.value = tr.assign.shovel;
         if (document.activeElement !== r.dump && r.dump.value !== tr.assign.dump) r.dump.value = tr.assign.dump;
-        const bad = mismatch(tr.assign.shovel, tr.assign.dump);
+        const bad = mismatch(tr.assign.shovel, tr.assign.dump, state.shovels[tr.assign.shovel]);
         r.dump.classList.toggle('mismatch', bad);
         r.dump.title = bad ? 'Material from this loading unit does not belong at this dump' : '';
         r.fuel.classList.toggle('low', tr.fuelLow && !tr.pendingFuel);
@@ -291,7 +293,7 @@
       card.className = 'equip-card';
       card.innerHTML =
         '<div class="ec-head"><span class="ec-name" title="' + esc(s.name) + '">' + esc(s.id) + '</span><span class="chip"></span></div>' +
-        '<div class="ec-row ec-label" title="' + esc(s.label) + '"><span>' + esc(s.label) + (s.material === 'ore' ? ' · ' + view.grade(s.grade) : '') + '</span></div>' +
+        '<div class="ec-row ec-label"><span class="f-label"></span></div>' +
         '<div class="ec-row"><span>Trucks</span><b class="f-assigned"></b></div>' +
         '<div class="ec-row"><span>Queue</span><b class="f-queue"></b></div>' +
         '<div class="ec-row"><span>Util.</span><b class="f-util"></b></div>' +
@@ -302,6 +304,7 @@
         assigned: card.querySelector('.f-assigned'),
         queue: card.querySelector('.f-queue'),
         util: card.querySelector('.f-util'),
+        label: card.querySelector('.f-label'),
         tram: card.querySelector('.f-tram')
       };
       if (shovelCards[s.id].tram) {
@@ -317,7 +320,19 @@
     dumpWrap.className = 'equip-dumps';
     equip.appendChild(dumpWrap);
     const dumpCards = {};
+    // Sites with many ROM fingers get one summary card for the ROM pad.
+    const groupFingers = Object.values(state.dumps).filter((d) => d.role === 'stockpile').length > 4;
+    let romCard = null;
+    if (groupFingers) {
+      const card = document.createElement('div');
+      card.className = 'equip-card';
+      card.innerHTML = '<div class="ec-head"><span class="ec-name">ROM pad</span><span class="chip"></span></div>' +
+        '<div class="ec-row"><span>Queue <b class="f-queue"></b></span><b class="f-tonnes"></b></div>';
+      dumpWrap.appendChild(card);
+      romCard = { chip: card.querySelector('.chip'), queue: card.querySelector('.f-queue'), tonnes: card.querySelector('.f-tonnes') };
+    }
     for (const d of Object.values(state.dumps)) {
+      if (groupFingers && d.role === 'stockpile') continue;
       const card = document.createElement('div');
       card.className = 'equip-card';
       card.innerHTML =
@@ -328,8 +343,8 @@
     }
 
     const STATUS_CHIP = {
-      operating: ['ok', 'Operating'], down: ['danger', 'Down'], tramming: ['warn', 'Tramming'],
-      standby: ['warn', 'Standby'], evacuated: ['danger', 'Evacuated'], commissioning: ['muted', 'Workshop']
+      operating: ['ok', 'Run'], down: ['danger', 'Down'], tramming: ['warn', 'Tram'],
+      standby: ['warn', 'Standby'], evacuated: ['danger', 'Evac'], commissioning: ['muted', 'Wkshop']
     };
 
     function updateEquipment() {
@@ -343,6 +358,8 @@
         c.queue.textContent = s.queue.length + (s.serving ? '+1' : '');
         c.queue.title = s.queue.length + ' waiting' + (s.serving ? ', 1 loading' : '');
         c.util.textContent = s.opTime > 60 ? Math.round((100 * s.busyTime) / s.opTime) + '%' : '—';
+        const lt = s.label + (s.material === 'ore' ? ' · ' + view.loadingText(s) : '');
+        if (c.label.textContent !== lt) { c.label.textContent = lt; c.label.parentElement.title = lt; }
         if (c.tram) {
           const b = state.blast;
           const blastHere = b && b.shovel === s.id;
@@ -359,11 +376,21 @@
           }
         }
       }
+      if (romCard) {
+        const fingers = Object.values(state.dumps).filter((d) => d.role === 'stockpile');
+        const closed = fingers.filter((d) => d.status !== 'operating');
+        romCard.chip.className = 'chip ' + (closed.length ? 'danger' : 'ok');
+        romCard.chip.textContent = closed.length ? closed.length + ' closed' : 'Online';
+        romCard.chip.title = closed.map((d) => d.name + ': ' + (d.downReason || 'closed')).join('\n');
+        romCard.queue.textContent = fingers.reduce((a, d) => a + d.queue.length, 0);
+        romCard.tonnes.textContent = Math.round(fingers.reduce((a, d) => a + d.tonnes, 0)).toLocaleString() + ' t';
+      }
       for (const d of Object.values(state.dumps)) {
         const c = dumpCards[d.id];
+        if (!c) continue;
         const up = d.status === 'operating';
         c.chip.className = 'chip ' + (up ? 'ok' : 'danger');
-        c.chip.textContent = up ? 'Online' : 'Down';
+        c.chip.textContent = up ? 'Online' : d.until === Infinity ? 'Closed' : 'Down';
         c.chip.title = d.downReason || '';
         c.queue.textContent = d.queue.length + (d.serving.length ? ' + ' + d.serving.length + ' tipping' : '');
         c.tonnes.textContent = Math.round(d.tonnes).toLocaleString() + ' t';

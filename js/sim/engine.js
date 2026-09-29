@@ -45,7 +45,10 @@
     opts = opts || {};
     const mine = ns.createMine(site.layout);
     const { NODES, SHOVELS, DUMPS, BASE, edge, shortestPath } = mine;
-    const PAYLOAD_T = site.fleet.payloadT;
+    // Truck classes (model, payload, owner). Sites with a single class can
+    // just give fleet.payloadT.
+    const CLASSES = site.fleet.classes || { std: { name: site.fleet.truckClass || 'Haul truck', payloadT: site.fleet.payloadT, owner: site.operator } };
+    const defaultClass = Object.keys(CLASSES)[0];
     const CRUSHER = mine.crusher().id;
     const roleOf = (dumpId) => (DUMPS.find((d) => d.id === dumpId) || {}).role;
     const rng = mulberry32(opts.seed != null ? opts.seed : (scenario.seed || 1));
@@ -97,8 +100,15 @@
     }
     scenario.fleet.forEach((f, i) => {
       const n = NODES[BASE];
+      const clsId = f.cls || defaultClass;
+      const cls = CLASSES[clsId];
+      if (!cls) throw new Error('Unknown truck class ' + clsId + ' for ' + f.id);
       state.trucks.push({
         id: f.id,
+        cls: clsId,
+        model: cls.name,
+        owner: cls.owner || '',
+        payloadT: cls.payloadT,
         assign: { shovel: f.shovel, dump: f.dump },
         phase: 'idle',
         purpose: null,
@@ -108,7 +118,7 @@
         at: BASE, x: n.x, y: n.y,
         hold: null,
         fuelLow: false, pendingFuel: false, fuelDeadline: null,
-        speedMul: jitter(0.04),
+        speedMul: (cls.speedFactor || 1) * jitter(0.04),
         serviceLeft: 0,
         loads: 0, tonnes: 0, queueTime: 0, idleTime: 0,
         zoneFlags: {}
@@ -325,7 +335,7 @@
     }
 
     function completeLoad(shovel, truck) {
-      const tonnes = Math.round(PAYLOAD_T * (0.97 + rng() * 0.06));
+      const tonnes = Math.round(truck.payloadT * (0.97 + rng() * 0.06));
       const grade = shovel.material === 'ore' ? Math.round(shovel.grade * jitter(0.08) * 100) / 100 : 0;
       // The load goes to the dump assigned at loading time; a later change of
       // circuit only applies after this load is tipped.
@@ -997,6 +1007,11 @@
         targets: scenario.targets,
         blendSpec: scenario.blend,
         totals: Object.assign({}, state.totals),
+        fleet: Object.keys(CLASSES).map((id) => {
+          const trucks = state.trucks.filter((tr) => tr.cls === id);
+          return { cls: id, model: CLASSES[id].name, owner: CLASSES[id].owner || '', count: trucks.length,
+            loads: trucks.reduce((a, tr) => a + tr.loads, 0), tonnes: trucks.reduce((a, tr) => a + tr.tonnes, 0) };
+        }).filter((f) => f.count),
         loads,
         avgQueueMinPerLoad: loads ? state.totals.queueTime / loads / 60 : 0,
         idleTruckHours: state.totals.idleTime / 3600,

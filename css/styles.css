@@ -165,14 +165,16 @@ select { padding-right: 6px; }
 .bottom-row { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 10px; height: 214px; flex-shrink: 0; border-top: 1px solid var(--line); }
 .bottom-row .panel { padding: 10px 12px; overflow: auto; }
 
-.equip { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 8px; align-content: start; }
+.equip { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; align-content: start; }
+.equip-card .ec-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.equip-card .chip { font-size: 10px; padding: 1px 5px; }
 .equip-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
 .equip-card .ec-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
 .equip-card .ec-name { font-weight: 700; font-size: 13px; }
 .equip-card .ec-row { color: var(--muted); display: flex; justify-content: space-between; }
 .equip-card .ec-row b { color: var(--text); font-weight: 600; }
 .equip-card .btn { width: 100%; margin-top: 6px; }
-.equip-dumps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.equip-dumps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .equip-dumps .equip-card { padding: 6px 10px; }
 .equip-dumps .ec-head { margin-bottom: 0; }
 
@@ -234,6 +236,14 @@ select { padding-right: 6px; }
 .fleet-table th:nth-child(6) { width: 30px; }
 .fleet-table th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted); padding: 4px 4px; border-bottom: 1px solid var(--line); z-index: 1; }
 .fleet-table td { padding: 4px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.fleet-table tr.own-0 td:first-child { box-shadow: inset 3px 0 0 var(--info); }
+.fleet-table tr.own-1 td:first-child { box-shadow: inset 3px 0 0 #c084fc; }
+.fleet-table tr.own-2 td:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+.owner-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.owner-btn.own-0 { border-left: 3px solid var(--info); }
+.owner-btn.own-1 { border-left: 3px solid #c084fc; }
+.owner-btn.own-2 { border-left: 3px solid var(--ok); }
+.sw-contractor { border-radius: 3px; border-color: #c084fc; }
 .fleet-table tr.sel td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .fleet-table tr.flash td { animation: flash 1.2s ease-out; }
 @keyframes flash { from { background: color-mix(in srgb, var(--accent) 35%, transparent); } to { background: transparent; } }

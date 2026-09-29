@@ -126,6 +126,10 @@
     body.innerHTML = '';
     for (const tr of state.trucks) {
       const row = document.createElement('tr');
+      if (view.mixedFleet) {
+        row.classList.add('own-' + view.classIndex(tr.cls));
+        row.title = tr.model + ' · ' + tr.owner;
+      }
       row.innerHTML =
         '<td><input type="checkbox" aria-label="Select ' + tr.id + '"></td>' +
         '<td class="tid">' + tr.id + '</td>' +
@@ -197,6 +201,21 @@
       updateFleet(true);
     });
 
+    // Quick selection by owner for mixed fleets.
+    const ownerBar = $('owner-bar');
+    ownerBar.hidden = !view.mixedFleet;
+    ownerBar.innerHTML = view.mixedFleet
+      ? '<span class="muted small">Select:</span>' + view.classIds.map((c, i) =>
+        '<button class="btn btn-sm owner-btn own-' + i + '" data-cls="' + esc(c) + '">' + esc(view.classTag(c)) +
+        ' <span class="muted">(' + state.trucks.filter((t) => t.cls === c).length + ' × ' + esc(view.classes[c].name) + ')</span></button>').join('') +
+        '<button class="btn btn-sm" data-cls="">Clear</button>'
+      : '';
+    ownerBar.querySelectorAll('button').forEach((b) => on(b, 'click', () => {
+      selected.clear();
+      if (b.dataset.cls) state.trucks.filter((t) => t.cls === b.dataset.cls).forEach((t) => selected.add(t.id));
+      syncSelection();
+    }));
+
     function syncSelection() {
       for (const id of Object.keys(rows)) {
         rows[id].cb.checked = selected.has(id);
@@ -263,11 +282,11 @@
       const card = document.createElement('div');
       card.className = 'equip-card';
       card.innerHTML =
-        '<div class="ec-head"><span class="ec-name">' + esc(s.name) + '</span><span class="chip"></span></div>' +
-        '<div class="ec-row"><span>' + esc(s.label) + (s.material === 'ore' ? ' · ' + view.grade(s.grade) : '') + '</span></div>' +
-        '<div class="ec-row"><span>Assigned</span><b class="f-assigned"></b></div>' +
+        '<div class="ec-head"><span class="ec-name" title="' + esc(s.name) + '">' + esc(s.id) + '</span><span class="chip"></span></div>' +
+        '<div class="ec-row ec-label" title="' + esc(s.label) + '"><span>' + esc(s.label) + (s.material === 'ore' ? ' · ' + view.grade(s.grade) : '') + '</span></div>' +
+        '<div class="ec-row"><span>Trucks</span><b class="f-assigned"></b></div>' +
         '<div class="ec-row"><span>Queue</span><b class="f-queue"></b></div>' +
-        '<div class="ec-row"><span>Utilisation</span><b class="f-util"></b></div>' +
+        '<div class="ec-row"><span>Util.</span><b class="f-util"></b></div>' +
         (s.safePos ? '<button class="btn btn-sm f-tram" hidden></button>' : '');
       equip.appendChild(card);
       shovelCards[s.id] = {
@@ -294,7 +313,7 @@
       const card = document.createElement('div');
       card.className = 'equip-card';
       card.innerHTML =
-        '<div class="ec-head"><span class="ec-name">' + esc(d.name) + '</span><span class="chip"></span></div>' +
+        '<div class="ec-head"><span class="ec-name" title="' + esc(d.name) + '">' + esc(d.short || d.name) + '</span><span class="chip"></span></div>' +
         '<div class="ec-row"><span>Queue <b class="f-queue"></b></span><b class="f-tonnes"></b></div>';
       dumpWrap.appendChild(card);
       dumpCards[d.id] = { chip: card.querySelector('.chip'), queue: card.querySelector('.f-queue'), tonnes: card.querySelector('.f-tonnes'), card };
@@ -312,8 +331,9 @@
         c.chip.className = 'chip ' + cls;
         c.chip.textContent = label;
         c.chip.title = s.downReason ? s.downReason + (s.until > state.t ? ' — est. ' + fmtMin(s.until - state.t) : '') : '';
-        c.assigned.textContent = state.trucks.filter((t) => t.assign.shovel === s.id).length + ' trucks';
-        c.queue.textContent = s.queue.length + (s.serving ? ' + loading' : '');
+        c.assigned.textContent = state.trucks.filter((t) => t.assign.shovel === s.id).length;
+        c.queue.textContent = s.queue.length + (s.serving ? '+1' : '');
+        c.queue.title = s.queue.length + ' waiting' + (s.serving ? ', 1 loading' : '');
         c.util.textContent = s.opTime > 60 ? Math.round((100 * s.busyTime) / s.opTime) + '%' : '—';
         if (c.tram) {
           const b = state.blast;

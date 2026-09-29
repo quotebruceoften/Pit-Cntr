@@ -133,6 +133,12 @@
         '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
         '<div class="panel"><h2>Incidents</h2>' + violations + '</div>' +
         '<div class="panel"><h2>Response to disruptions</h2>' + disruptions + '</div>' +
+        (s.fleet && s.fleet.length > 1
+          ? '<div class="panel full"><h2>Fleet by owner</h2><table class="data-table"><thead><tr><th>Trucks</th><th>Owner</th><th class="num">Count</th><th class="num">Loads</th><th class="num">Tonnes</th><th class="num">Loads / truck</th></tr></thead><tbody>' +
+            s.fleet.map((f) => '<tr><td>' + esc(f.model) + '</td><td>' + esc(f.owner) + '</td><td class="num">' + f.count + '</td><td class="num">' + f.loads +
+              '</td><td class="num">' + Math.round(f.tonnes).toLocaleString() + '</td><td class="num">' + (f.loads / f.count).toFixed(1) + '</td></tr>').join('') +
+            '</tbody></table><p class="muted small">Similar loads per truck across owners indicates even-handed dispatch.</p></div>'
+          : '') +
         integrity +
       '</div>';
   }

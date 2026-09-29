@@ -53,12 +53,19 @@
 
     const shovelOptions = mine.SHOVELS.map((s) => [s.id, s.id + ' ' + tag(s.id)]).concat([['PARK', 'Park']]);
     const dumpOptions = mine.DUMPS.map((d) => [d.id, d.short || d.name]);
+    // Truck classes / owners. The first class is drawn as circles, others as squares.
+    const classes = site.fleet.classes || {};
+    const classIds = Object.keys(classes);
+    const classIndex = (cls) => Math.max(0, classIds.indexOf(cls));
+    const classTag = (cls) => (classes[cls] && (classes[cls].tag || classes[cls].owner)) || '';
+
     const placeName = (id) => (dumpById[id] ? dumpById[id].short || dumpById[id].name : id === mine.BASE ? 'Workshop' : id);
 
     return {
       site, scenario, mine, unit, decimals,
       shovelById, dumpById, oreClass, tag, grade, mismatch, defaultDump,
       shovelOptions, dumpOptions, placeName,
+      classes, classIds, classIndex, classTag, mixedFleet: classIds.length > 1,
       loadClass: (load) => load.material === 'waste' ? 'waste' : oreClass(shovelById[load.source] ? shovelById[load.source].grade : load.grade)
     };
   }

@@ -20,12 +20,15 @@
   'use strict';
 
   // plan: [[loadingUnit, dump, truckCount], ...]; parked: truck ids starting parked.
-  function fleet(plan, parked, prefix) {
+  // cls: optional truck class id (see site.fleet.classes).
+  function fleet(plan, parked, prefix, cls) {
     const out = [];
     let n = 1;
     for (const [shovel, dump, count] of plan) {
       for (let i = 0; i < count; i++) {
-        out.push({ id: (prefix || 'T') + String(n++).padStart(2, '0'), shovel, dump });
+        const f = { id: (prefix || 'T') + String(n++).padStart(2, '0'), shovel, dump };
+        if (cls) f.cls = cls;
+        out.push(f);
       }
     }
     for (const id of parked || []) {
@@ -298,6 +301,81 @@
     text: 'Two trucks came within metres of a rear-end collision in dust (near miss) — no visibility controls in place.'
   });
 
+  // Mixed fleets: groups = [{ prefix, cls, count }]. Trucks from each group
+  // are interleaved in proportion and then allocated to the plan in order,
+  // so owners share loading units.
+  function mixedFleet(groups, plan, parked) {
+    const trucks = [];
+    const used = groups.map(() => 0);
+    const total = groups.reduce((a, g) => a + g.count, 0);
+    for (let k = 0; k < total; k++) {
+      let best = -1;
+      let bestLag = -Infinity;
+      groups.forEach((g, i) => {
+        if (used[i] >= g.count) return;
+        const lag = (k + 1) * g.count / total - used[i];
+        if (lag > bestLag) { bestLag = lag; best = i; }
+      });
+      const g = groups[best];
+      used[best]++;
+      trucks.push({ id: g.prefix + String(used[best]).padStart(2, '0'), cls: g.cls });
+    }
+    const planned = plan.reduce((a, p) => a + p[2], 0);
+    if (planned !== total) throw new Error('Fleet plan allocates ' + planned + ' trucks but the fleet has ' + total);
+    let n = 0;
+    for (const [shovel, dump, count] of plan) {
+      for (let i = 0; i < count; i++) Object.assign(trucks[n++], { shovel, dump });
+    }
+    for (const id of parked || []) trucks.find((t) => t.id === id).shovel = 'PARK';
+    return trucks;
+  }
+
+  // Contractor fleets dispatched by the owner's pit control.
+  const contractorPriority = (at, supervisor) => ({
+    at, type: 'radio', id: 'contractor-priority',
+    from: supervisor,
+    message: 'Pit control, ' + supervisor + '. We\'re behind on our contract tonnes this month. Can you put our trucks at the front of the queue at the crusher and the ore diggers for the rest of the shift?',
+    options: [
+      { text: 'Negative. Dispatch follows the mine plan, not the company — queue order stays first-come at every digger and tip. If tonnes are a concern, please raise it with the mining superintendent.', rating: 'best',
+        feedback: 'Fair, plan-driven dispatch keeps the whole operation efficient and avoids favouritism; commercial issues go to management.' },
+      { text: 'OK, I\'ll quietly give your trucks priority for the rest of the shift.', rating: 'poor',
+        effects: [{ type: 'violation', severity: 'minor', category: 'process', text: 'Dispatch priority given to one company\'s trucks outside the mine plan.' }],
+        feedback: 'Biased dispatch costs overall production, breaks trust with the other fleet and is a commercial decision the controller does not own.' },
+      { text: 'I\'ll see what I can do if the queues allow.', rating: 'ok',
+        feedback: 'Polite, but non-committal; it invites future pressure. State the dispatch rule and escalate the concern.' },
+      { text: 'Not my problem.', rating: 'poor',
+        feedback: 'Correct outcome, poor professionalism. The controller must work with contractor supervisors every shift.' }
+    ],
+    timeoutText: 'A contractor supervisor\'s request went unanswered.'
+  });
+
+  const contractorAuthorisation = (at, supervisor, truck, route) => ({
+    at, type: 'radio', id: 'contractor-authorisation',
+    from: supervisor,
+    message: supervisor + ' here. I\'ve put a new operator on ' + truck + '. He\'s done his induction but hasn\'t been signed off on the ' + route + ' yet. We\'re short of operators — can he haul there today?',
+    options: [
+      { text: 'No. He can only operate where he has been assessed and signed off. Park ' + truck + ' at the go-line until a trainer can ride with him, and I\'ll re-plan the fleet.', rating: 'best',
+        effects: [{ type: 'hold', truck, minutes: 30, reason: 'waiting for a trainer to ride along' }],
+        feedback: 'Authorisation (VOC) rules apply to contractor operators exactly as to your own. The production loss is the correct trade-off.' },
+      { text: 'Yes, just tell him to take it slow on the ramp.', rating: 'unsafe', severity: 'major',
+        effects: [{ type: 'flag', key: 'unauthorisedOperator' }],
+        feedback: 'Allows an unassessed operator on a ramp haul — a known high-risk task.' },
+      { text: 'Only if one of your experienced operators talks him through it on the radio.', rating: 'poor',
+        effects: [{ type: 'flag', key: 'unauthorisedOperator' }],
+        feedback: 'Radio coaching is not an assessment; he is still unauthorised for that route.' },
+      { text: 'Your operators are your responsibility — do what you think is right.', rating: 'poor',
+        effects: [{ type: 'flag', key: 'unauthorisedOperator' }],
+        feedback: 'Pit control shares responsibility for who is dispatched where on the owner\'s roads.' }
+    ],
+    timeoutEffects: [{ type: 'flag', key: 'unauthorisedOperator' }],
+    timeoutText: 'A contractor asked whether an unauthorised operator could haul, and got no answer.'
+  });
+
+  const contractorAuthorisationFollowUp = (at, truck, route) => ({
+    at, type: 'violation', when: { flag: 'unauthorisedOperator', is: true }, severity: 'major', category: 'safety',
+    text: truck + '\'s unassessed operator lost traction and stopped against the windrow on the ' + route + ' (near miss).'
+  });
+
   // ------------------------------------------------------------ site registry
 
   const SITES = [];
@@ -323,7 +401,8 @@
   return {
     SITES, registerSite, getSite, formatGrade,
     scenarioLib: {
-      fleet, lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
+      fleet, mixedFleet, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
+      lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
       geotech, nearMiss, windrow, unknownLv, waterCart,
       lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp
     }

@@ -10,7 +10,7 @@ Each mine is modelled as a **site profile**. A profile holds the mine's own pit 
 
 | Site | Status | Scenarios |
 |---|---|---|
-| **QKR Navachab Gold Mine** (Karibib, Namibia) | Draft: placeholders to confirm, see [data sheet](docs/sites/navachab-data-sheet.md) | Practice · Day shift (Main Pit & Anomaly 16) · Summer storm & blast (lightning TARP) · Night shift (slope radar alarm) |
+| **QKR Navachab Gold Mine** (Karibib, Namibia) | Draft: mixed fleet of 20 Komatsu HD785 (QKR) + 14 CAT 777E (Eitavelo Mining) confirmed; other items to confirm, see [data sheet](docs/sites/navachab-data-sheet.md) | Practice · Day shift (Main Pit & Anomaly 16, contractor priority request) · Summer storm & blast (lightning TARP, contractor operator not authorised for a route) · Night shift (slope radar alarm) |
 | Demo Copper Mine | Fictional demo | Practice · Day shift · Blast day · Night shift |
 
 Pick the active site on the home screen or under assessor Settings. For a customer installation, lock the site in `js/config.js`.

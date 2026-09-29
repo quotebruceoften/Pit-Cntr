@@ -229,8 +229,12 @@
         const p = pos[tr.id];
         truckScreen.push({ id: tr.id, x: p.x, y: p.y });
         const fill = truckColor(tr);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        // Contractor / second-class trucks are drawn as squares.
+        if (view.classIndex(tr.cls) > 0) roundRect(p.x - r * 0.9, p.y - r * 0.9, r * 1.8, r * 1.8, r * 0.35);
+        else {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        }
         if (tr.hold) {
           ctx.fillStyle = COLORS.down;
           ctx.fill();

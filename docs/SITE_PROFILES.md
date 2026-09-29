@@ -32,7 +32,13 @@ lib.registerSite({
   status: 'draft' | 'confirmed' | 'demo',
   statusNote: 'Shown as a banner while the profile is a draft',
   commodity: { name: 'Gold', gradeUnit: 'g/t Au', gradeDecimals: 2 },
-  fleet: { payloadT: 90, truckClass: '…', count: 20 },
+  fleet: {                            // single class: { payloadT, truckClass }
+    count: 34,                        // mixed fleets: one entry per model/owner
+    classes: {
+      HD785:   { name: 'Komatsu HD785', payloadT: 91, owner: 'QKR Navachab', tag: 'QKR', speedFactor: 1 },
+      CAT777E: { name: 'CAT 777E', payloadT: 91, owner: 'Eitavelo Mining (contractor)', tag: 'Eitavelo' }
+    }
+  },
   planWeights: { EX1: 5, … },         // balanced trucks per unit (used by the expert bot)
   wasteDumpFor: { EX3: 'NWRD', … },   // default waste dump per waste unit
   layout: { … },                      // see below
@@ -58,7 +64,7 @@ To trace a real mine plan: use the pit plan image in a drawing tool, place nodes
 
 ### Scenarios
 
-A scenario has: `id`, `name`, `durationMin`, `startClockMin`, `speed`, `summary`, `briefing[]`, `blend {min, max}`, `targets {ore, waste}`, `fleet` and `events[]`. Setting `practice: true` marks the unranked practice shift. Every site needs a practice shift.
+A scenario has: `id`, `name`, `durationMin`, `startClockMin`, `speed`, `summary`, `briefing[]`, `blend {min, max}`, `targets {ore, waste}`, `fleet` and `events[]`. Build `fleet` with `lib.scenarioLib.fleet(plan)`, or with `mixedFleet(groups, plan)` for owner and contractor fleets, which interleaves the trucks across loading units. Setting `practice: true` marks the unranked practice shift. Every site needs a practice shift.
 
 Event types (the `at` field is minutes from the start of the shift):
 
@@ -77,7 +83,7 @@ Event types (the `at` field is minutes from the start of the shift):
 
 Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`.
 
-Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust` (plus `…FollowUp` consequences).
+Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation` (plus `…FollowUp` consequences).
 
 ## Calibration
 

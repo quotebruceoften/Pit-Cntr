@@ -97,6 +97,12 @@
     $('brief-mode').textContent = pending.site.name + ' · ' + (practice ? 'Practice shift' : 'Assessment · ' + pending.candidate.name);
     $('brief-draft').hidden = !pending.site.statusNote;
     $('brief-draft').textContent = pending.site.statusNote || '';
+    const classes = pending.site.fleet.classes ? Object.values(pending.site.fleet.classes) : [];
+    $('legend-classes').hidden = classes.length < 2;
+    if (classes.length > 1) {
+      $('legend-classes').innerHTML = '<span class="sw sw-empty"></span>' + esc(classes[0].name) + ' (' + esc(classes[0].tag || classes[0].owner) + ')' +
+        ' &nbsp; <span class="sw sw-empty sw-contractor"></span>' + classes.slice(1).map((c) => esc(c.name) + ' (' + esc(c.tag || c.owner) + ')').join(', ');
+    }
     $('brief-title').textContent = sc.name;
     $('brief-summary').textContent = sc.summary;
     $('brief-points').innerHTML = sc.briefing.map((b) => '<li>' + esc(b) + '</li>').join('');

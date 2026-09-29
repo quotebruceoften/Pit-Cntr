@@ -241,3 +241,43 @@ test('blend is scored again once a blasted shovel could have returned but was le
   assert.ok(late.every((t) => t.assessable), 'standby by choice must not excuse the blend');
   assert.ok(late.every((t) => !t.inSpec), 'high-grade only feed is out of spec');
 });
+
+test('navachab: mixed fleet of 20 Komatsu HD785 (QKR) and 14 CAT 777E (Eitavelo) shares the loading units', () => {
+  const site = SITES.find((s) => s.id === 'navachab');
+  for (const sc of site.scenarios) {
+    const sim = engine.createSim(site, sc, { seed: 1 });
+    const byCls = {};
+    for (const t of sim.state.trucks) byCls[t.cls] = (byCls[t.cls] || 0) + 1;
+    assert.deepEqual(byCls, { HD785: 20, CAT777E: 14 }, sc.id);
+    assert.ok(sim.state.trucks.filter((t) => t.cls === 'CAT777E').every((t) => /Eitavelo/.test(t.owner)));
+    // Both owners are on the ore units from the start.
+    for (const unit of ['EX1', 'EX2']) {
+      const owners = new Set(sim.state.trucks.filter((t) => t.assign.shovel === unit).map((t) => t.cls));
+      assert.equal(owners.size, 2, sc.id + ' ' + unit);
+    }
+  }
+  const { summary } = bots.run(site, site.scenarios.find((s) => s.id === 'day'), bots.expertController);
+  assert.equal(summary.fleet.length, 2);
+  assert.ok(summary.fleet.every((f) => f.loads > 0));
+});
+
+test('contractor authorisation: refusing parks the truck; allowing it leads to a near miss', () => {
+  const site = SITES.find((s) => s.id === 'navachab');
+  const lib = require('../js/sim/library.js').scenarioLib;
+  const base = site.scenarios.find((s) => s.id === 'storm');
+  const sc = Object.assign({}, base, { events: [lib.contractorAuthorisation(1, 'Eitavelo supervisor', 'EV11', 'A16 ramp'), lib.contractorAuthorisationFollowUp(20, 'EV11', 'A16 ramp')] });
+  for (const rating of ['best', 'unsafe']) {
+    const sim = engine.createSim(site, sc, { seed: 1 });
+    while (sim.state.t < 70) sim.step(1, 1 / 15);
+    const call = sim.state.radio[0];
+    sim.answerRadio(call.id, call.options.find((o) => o.rating === rating).index);
+    while (sim.state.t < 25 * 60) sim.step(1, 1 / 15);
+    const nearMiss = sim.state.violations.some((v) => /lost traction/.test(v.text));
+    if (rating === 'best') {
+      assert.ok(!nearMiss);
+      assert.ok(sim.state.trucks.find((t) => t.id === 'EV11').hold);
+    } else {
+      assert.ok(nearMiss);
+    }
+  }
+});

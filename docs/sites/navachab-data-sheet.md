@@ -21,7 +21,7 @@ Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated.
 | Role assessed | The **pit-area controller** (Channel 1). A second controller runs the rehandle area on Channel 3 |
 | Active pit | Main Pit only, loading in pushbacks PB3, PB4 and PB5. PB6 is being prepared for waste stripping and is not released (its access road is drawn closed) |
 | Cycle times | PB3 and PB4 are near the end of their life and very deep: about **45 min per cycle** to any stockpile or waste dump, so about 1 load per truck per hour. Modelled with real road lengths (PB3/PB4 ≈ 44–47 min), which makes the fleet truck-limited |
-| Loading units | EX03 Hitachi EX1900 · EX04 Hitachi EX1200 · EX05, EX07, EX08 Komatsu PC2000 · EX10 Komatsu PC2000 (new, being assembled in the workshop; starts as "Workshop" and is released mid-shift in the day scenario) · NEX1400 CAT 350 (Trollope Mining) |
+| Loading units | EX03 Hitachi EX1900 · EX04 Hitachi EX1200 · EX05, EX07, EX08 Komatsu PC2000 · EX10 Komatsu PC2000 (new, being assembled in the workshop; starts as "Workshop" and is released mid-shift in the day scenario) · NEX14002 CAT 6015B hydraulic shovel (Trollope Mining), about 4–5 passes / 2.5 min per 91 t truck |
 | QKR haul fleet | 20 × Komatsu HD785, fleet numbers 16, 17, 19, 22, 25, 26, 27, 29, 33, 35, 36, 42–50 |
 | Contractor haul fleet | Eitavelo Mining: 14 × CAT 777E, fleet numbers 71, 41–53 |
 | Dispatch | Pit control dispatches all 34 trucks as one fleet on shared loading units |
@@ -39,10 +39,10 @@ Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated.
 |---|---|---|---|
 | 1 | Pit and road layout | Schematic Main Pit: PB3 at the bottom, PB4 west, PB5 east, PB6 north-west; one main ramp | Current pit plan: ramps, pushback access roads, intersections, give-ways |
 | 2 | PB5 cycle time | About 26 min to TSF | Typical PB5 cycle time |
-| 3 | Ore type per unit | Start of shift: EX04 MC Blue, NEX1400 MC Red, EX05 FW Green. Scripted polygon changes: EX05 to LG Brown (day), EX04 to Lime (storm), NEX1400 to Purple HG (night) | Which ore types each pushback currently produces, and how often units move between polygons |
+| 3 | Ore type per unit | Start of shift: EX04 MC Blue, NEX14002 MC Red, EX05 FW Green. Scripted polygon changes: EX05 to LG Brown (day), EX04 to Lime (storm), NEX14002 to Purple HG (night) | Which ore types each pushback currently produces, and how often units move between polygons |
 | 4 | ROM pad layout | Near fingers in rows beside the crusher; Yellow, LG Brown and Purple LG about 1.3 km further | Finger positions and distances; what "DM" means for Purple DM |
 | 5 | Truck callsigns and payloads | Real numbers; the "HT" (QKR) and "EV" (Eitavelo) prefixes are placeholders, since both fleets use 42–50. 91 t nominal payload | How trucks are called on the radio, and target payloads |
-| 6 | NEX1400 role | Slow, selective ore loader (about 5.5 min per HD785 load) | What the Trollope CAT 350 actually does |
+| 6 | NEX14002 assignment | PB3 ore (MC Red) with 5 trucks | Which pushback and face the Trollope CAT 6015B works, whether it loads ore or waste, and whether it is dispatched like the QKR units |
 | 7 | Targets | Shift targets calibrated from the expert controller | Planned shift tonnes for ore and waste |
 | 8 | Shift pattern | 06:00 day shift, 18:00 night shift | Shift start times, crib times and handover practice |
 | 9 | Lightning TARP | Warning at about 10 km: stop explosives work, get people on foot under cover. Stand-down within 5 km: park the fleet, operators stay in cabs | Exact trigger distances, levels and required actions |

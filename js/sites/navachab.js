@@ -13,7 +13,7 @@
  *    prepared for waste stripping and is not released.
  *  - Loading units: EX03 Hitachi EX1900, EX04 Hitachi EX1200, EX05/EX07/EX08
  *    Komatsu PC2000, EX10 Komatsu PC2000 (new, still being assembled in the
- *    workshop) and a Trollope Mining CAT 350 (NEX1400).
+ *    workshop) and a Trollope Mining CAT 6015B hydraulic shovel (NEX14002).
  *  - Haul fleet: 20 QKR Komatsu HD785 and 14 Eitavelo Mining CAT 777E,
  *    all dispatched by pit control on shared loading units.
  *  - Ore is tipped on ROM stockpiles at the crusher, one finger per ore type:
@@ -88,7 +88,7 @@
     EX05: { x: 650, y: 1150 },
     EX07: { x: 720, y: 1450 },
     EX04: { x: 1300, y: 1950 },
-    NEX1400: { x: 1720, y: 1960 }
+    NEX14002: { x: 1720, y: 1960 }
   };
   const near = ORE_TYPES.filter((t) => !t.far);
   near.forEach((t, i) => {
@@ -109,7 +109,7 @@
     ['R3', 'MF', { ramp: true, upFrom: 'MF', lengthM: 1700 }],
     ['R2', 'J7', { lengthM: 400 }], ['J7', 'EX03', { lengthM: 250 }], ['J7', 'EX08', { lengthM: 250 }], ['J7', 'EX10', { lengthM: 250 }],
     ['R3', 'W1', { ramp: true, upFrom: 'W1', lengthM: 1400 }], ['W1', 'EX05', { lengthM: 250 }], ['W1', 'EX07', { lengthM: 250 }],
-    ['MF', 'EX04', { lengthM: 300 }], ['MF', 'NEX1400', { lengthM: 300 }],
+    ['MF', 'EX04', { lengthM: 300 }], ['MF', 'NEX14002', { lengthM: 300 }],
     // PB6 access: drawn but closed to haulage until PB6 is released.
     ['J1', 'P6', { closed: true }]
   ];
@@ -130,7 +130,8 @@
       { id: 'EX07', name: 'EX07 Komatsu PC2000', material: 'waste', grade: 0, label: 'PB4 waste', loadSec: 130 },
       { id: 'EX08', name: 'EX08 Komatsu PC2000', material: 'waste', grade: 0, label: 'PB5 waste', loadSec: 130 },
       { id: 'EX10', name: 'EX10 Komatsu PC2000', material: 'waste', grade: 0, label: 'PB5 waste (new unit)', loadSec: 130 },
-      { id: 'NEX1400', name: 'NEX1400 CAT 350 (Trollope Mining)', material: 'ore', oreType: 'MCR', grade: 0, label: 'PB3 ore (selective)', loadSec: 330 }
+      // CAT 6015B (~8 m³ bucket): about 4-5 passes per 91 t truck.
+      { id: 'NEX14002', name: 'NEX14002 CAT 6015B (Trollope Mining)', material: 'ore', oreType: 'MCR', grade: 0, label: 'PB3 ore', loadSec: 150 }
     ],
     dumps: ORE_TYPES.map((t) => ({
       id: t.id, name: t.name + (t.far ? ' stockpile' : ' finger'), short: t.name, role: 'stockpile',
@@ -157,10 +158,10 @@
     ]
   };
 
-  const DUMP_FOR = { EX03: 'TSF', EX04: 'MCB', EX05: 'FWG', EX07: 'TSF', EX08: 'TSF', EX10: 'TSF', NEX1400: 'MCR' };
+  const DUMP_FOR = { EX03: 'TSF', EX04: 'MCB', EX05: 'FWG', EX07: 'TSF', EX08: 'TSF', EX10: 'TSF', NEX14002: 'MCR' };
   // Trucks per loading unit, e.g. plan({ EX03: 7, EX04: 6, ... }).
   const plan = (counts) => Object.keys(counts).map((u) => [u, DUMP_FOR[u], counts[u]]);
-  const BALANCED = { EX03: 7, EX04: 6, EX05: 6, EX07: 5, EX08: 7, NEX1400: 3 };
+  const BALANCED = { EX03: 7, EX04: 5, EX05: 5, EX07: 5, EX08: 7, NEX14002: 5 };
 
   // Real fleet numbers. The HT/EV prefixes are placeholders so that QKR and
   // Eitavelo trucks with the same number (42-50) can be told apart.
@@ -181,7 +182,7 @@
   const roleText = 'You are the PIT-AREA controller on ' + PIT_CH + '. The rehandle controller on ' + REHANDLE_CH +
     ' runs the ROM pad, loaders and the HD325/HD465 trucks feeding the crusher. There is no FMS yet: you dispatch by radio.';
   const gradeText = 'Ore goes to the ROM finger for its ore type. At the start of shift EX04 is loading ' + typeName('MCB') +
-    ', NEX1400 ' + typeName('MCR') + ' and EX05 ' + typeName('FWG') + '. Grade control will call if a unit moves into a new polygon. Waste goes to TSF Projects; HME is closed.';
+    ', NEX14002 ' + typeName('MCR') + ' and EX05 ' + typeName('FWG') + '. Grade control will call if a unit moves into a new polygon. Waste goes to TSF Projects; HME is closed.';
   const cycleText = 'PB3 and PB4 are very deep: expect about 45 minutes per cycle, roughly one load per truck per hour. PB5 cycles are shorter.';
 
   const scenarios = [
@@ -220,14 +221,14 @@
       summary: 'A handover that starves the ore units, an ore polygon change, EX10 released from commissioning, a rehandle finger closure and routine radio traffic.',
       briefing: [
         roleText,
-        'Handover note: night shift left 2 trucks on EX04, 3 on EX05, 2 on NEX1400, 9 on EX03, 9 on EX07 and 9 on EX08. Check whether that suits today\'s ore and waste targets.',
+        'Handover note: night shift left 2 trucks on EX04, 3 on EX05, 2 on NEX14002, 9 on EX03, 9 on EX07 and 9 on EX08. Check whether that suits today\'s ore and waste targets.',
         cycleText,
         'EX10 is expected to be released from commissioning during the shift.',
         gradeText,
         'Shift targets: TARGET_ORE t ore and TARGET_WASTE t waste.'
       ],
       shovelStatus: EX10_COMMISSIONING,
-      fleet: fleet({ EX03: 9, EX04: 2, EX05: 3, EX07: 9, EX08: 9, NEX1400: 2 }),
+      fleet: fleet({ EX03: 9, EX04: 2, EX05: 3, EX07: 9, EX08: 9, NEX14002: 2 }),
       events: [
         { at: 0, type: 'alert', level: 'info', text: 'Day shift started. Review the handover allocation.' },
         L.channelDiscipline(10, 'Rehandle HD465 truck', PIT_CH, REHANDLE_CH),
@@ -284,7 +285,7 @@
         { at: 125, type: 'oreChange', shovel: 'EX04', oreType: 'LIME' },
         L.gradeControlCall(125, 'EX04', typeName('LIME'), 'Lime finger'),
         L.rainFollowUp(130),
-        { at: 145, type: 'shovelDown', shovel: 'NEX1400', minutes: 25, reason: 'Hydraulic hose failure' },
+        { at: 145, type: 'shovelDown', shovel: 'NEX14002', minutes: 25, reason: 'Hydraulic hose failure' },
         L.fatigue(160, 'EV49'),
         L.fatigueFollowUp(172, 'EV49')
       ]
@@ -312,8 +313,8 @@
         L.geotech(20, 'EX07'),
         { at: 35, type: 'shovelDown', shovel: 'EX08', minutes: 25, reason: 'Hydraulic pump fault' },
         { at: 50, type: 'truckBreakdown', truck: 'HT26', minutes: 30, text: 'HT26 stopped on the main ramp — electrical fault.', radio: L.breakdownRadio('HT26', 'main ramp') },
-        { at: 60, type: 'oreChange', shovel: 'NEX1400', oreType: 'PHG' },
-        L.gradeControlCall(60, 'NEX1400', typeName('PHG'), 'Purple HG finger'),
+        { at: 60, type: 'oreChange', shovel: 'NEX14002', oreType: 'PHG' },
+        L.gradeControlCall(60, 'NEX14002', typeName('PHG'), 'Purple HG finger'),
         { at: 70, type: 'fuelLow', truck: 'HT36', minutes: 40, radio: L.fuelRadio('HT36') },
         L.unknownLv(85, 'HT42', 'a light vehicle with no flag or beacon', 'main ramp'),
         L.fatigueAlarm(110, 'EV45'),
@@ -326,10 +327,10 @@
 
   // Shift targets, calibrated against the reference (expert) controller.
   const TARGETS = {
-    practice: { ore: 800, waste: 1900 },
-    day: { ore: 3200, waste: 7800 },
-    storm: { ore: 2500, waste: 7400 },
-    night: { ore: 4800, waste: 7600 }
+    practice: { ore: 900, waste: 1950 },
+    day: { ore: 3600, waste: 7700 },
+    storm: { ore: 2700, waste: 7300 },
+    night: { ore: 4700, waste: 7600 }
   };
   for (const sc of scenarios) {
     sc.targets = TARGETS[sc.id];
@@ -363,8 +364,8 @@
     // Long cycles make the fleet truck-limited: loading units are expected to
     // wait for trucks, so utilisation is judged on a lower scale.
     utilisationRange: [0.1, 0.35],
-    planWeights: { EX03: 7, EX04: 6, EX05: 6, EX07: 5, EX08: 7, EX10: 4, NEX1400: 3 },
-    oreDumpFor: { EX04: 'MCB', EX05: 'FWG', NEX1400: 'MCR' },
+    planWeights: { EX03: 7, EX04: 5, EX05: 5, EX07: 5, EX08: 7, EX10: 4, NEX14002: 5 },
+    oreDumpFor: { EX04: 'MCB', EX05: 'FWG', NEX14002: 'MCR' },
     wasteDumpFor: { EX03: 'TSF', EX07: 'TSF', EX08: 'TSF', EX10: 'TSF' },
     radio: { pit: PIT_CH, rehandle: REHANDLE_CH },
     layout,

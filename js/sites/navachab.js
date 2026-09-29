@@ -100,7 +100,9 @@
 
   const edges = [
     // Road lengths (lengthM) are set so PB3/PB4 cycles are about 45 min and
-    // PB5 about 26 min at the governed speeds.
+    // PB5 about 26 min at the governed speeds. Haul ramps are ~10% gradient
+    // (pit walls are 20-30°, not modelled), so ramp length implies depth:
+    // PB3/PB4 ~5.6 km of ramp ≈ 560 m, PB5 ~2.6 km ≈ 265 m (to confirm).
     ['RP', 'J1', { lengthM: 300 }], ['LGA', 'J1', { lengthM: 1300 }],
     ['J1', 'J2', { lengthM: 800 }], ['J2', 'WS', { lengthM: 400 }], ['J2', 'J3', { lengthM: 500 }],
     ['J3', 'TSF', { lengthM: 1010 }], ['J3', 'J6', { lengthM: 600 }], ['J6', 'HME', { lengthM: 600 }],

@@ -30,6 +30,8 @@ function expertController(sim, opts) {
   const roleOf = (id) => (sim.mine.DUMPS.find((d) => d.id === id) || {}).role;
   const answerAfter = opts.answerAfter != null ? opts.answerAfter : 5;
   let lastCheck = -Infinity;
+  // Units this controller started to cover for a lost one (parked again later).
+  let started = [];
 
   return function control() {
     for (const call of s.radio.slice()) {
@@ -68,6 +70,21 @@ function expertController(sim, opts) {
       if (planned && takes(sim.mine.DUMPS.find((d) => d.id === planned)) && open(planned)) return planned;
       return same((d) => takes(d) && open(d.id))[0] || null;
     };
+    // Sites that run a fixed number of units: start a parked unit when one is
+    // lost, and park it again once the original is back.
+    const runUnits = sim.site.runUnits;
+    if (runUnits) {
+      const running = Object.values(s.shovels).filter((sh) => sh.status === 'operating' || sh.status === 'starting');
+      if (running.length < runUnits) {
+        const order = sim.site.startOrder || Object.keys(s.shovels);
+        const cand = order.map((id) => s.shovels[id]).find((sh) => sh && sh.status === 'parked');
+        if (cand && sim.startUnit(cand.id).ok) started.push(cand.id);
+      } else if (running.length > runUnits) {
+        const id = started.find((x) => s.shovels[x].status === 'operating');
+        if (id && sim.parkUnit(id).ok) started = started.filter((x) => x !== id);
+      }
+    }
+
     // A unit is usable if it is loading and its material has somewhere to go.
     const avail = Object.values(s.shovels)
       .filter((sh) => sh.status === 'operating' && !(blastActive && b.shovel === sh.id) && dumpFor(sh.id, null))

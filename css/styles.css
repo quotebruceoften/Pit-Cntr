@@ -173,7 +173,7 @@ select { padding-right: 6px; }
 .equip-card .ec-name { font-weight: 700; font-size: 13px; }
 .equip-card .ec-row { color: var(--muted); display: flex; justify-content: space-between; }
 .equip-card .ec-row b { color: var(--text); font-weight: 600; }
-.equip-card .btn { width: 100%; margin-top: 6px; }
+.equip-card .btn { width: 100%; margin-top: 4px; padding: 2px 6px; }
 .equip-dumps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .equip-dumps .equip-card { padding: 6px 10px; }
 .equip-dumps .ec-head { margin-bottom: 0; }

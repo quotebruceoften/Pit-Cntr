@@ -250,8 +250,8 @@ test('navachab: mixed fleet of 20 Komatsu HD785 (QKR) and 14 CAT 777E (Eitavelo)
     for (const t of sim.state.trucks) byCls[t.cls] = (byCls[t.cls] || 0) + 1;
     assert.deepEqual(byCls, { HD785: 20, CAT777E: 14 }, sc.id);
     assert.ok(sim.state.trucks.filter((t) => t.cls === 'CAT777E').every((t) => /Eitavelo/.test(t.owner)));
-    // Both owners are on the ore units from the start.
-    for (const unit of ['EX04', 'EX05']) {
+    // Both owners share every running loading unit from the start.
+    for (const unit of sc.running) {
       const owners = new Set(sim.state.trucks.filter((t) => t.assign.shovel === unit).map((t) => t.cls));
       assert.equal(owners.size, 2, sc.id + ' ' + unit);
     }
@@ -375,23 +375,23 @@ test('navachab: trucks respect the 40 km/h governor and 30 km/h on down ramps', 
 test('navachab: a unit can switch from ore to waste and from waste to ore mid-shift', () => {
   const sc = navScenario('day', { events: [
     { at: 30, type: 'faceChange', shovel: 'EX04', oreType: 'waste' },
-    { at: 30, type: 'faceChange', shovel: 'EX07', oreType: 'OR1' }
+    { at: 30, type: 'faceChange', shovel: 'EX08', oreType: 'OR1' }
   ] });
   const sim = engine.createSim(navachab(), sc, { seed: 1 });
   runNav(sim, 30.1);
   assert.equal(sim.state.shovels.EX04.material, 'waste');
-  assert.equal(sim.state.shovels.EX07.material, 'ore');
-  assert.equal(sim.state.shovels.EX07.oreType, 'OR1');
+  assert.equal(sim.state.shovels.EX08.material, 'ore');
+  assert.equal(sim.state.shovels.EX08.oreType, 'OR1');
   const ds = sim.state.disruptions.filter((x) => x.type === 'oreChange');
   assert.equal(ds.length, 2);
   for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX04')) sim.assign(t.id, { dump: 'TSF' });
-  for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX07')) sim.assign(t.id, { dump: 'OR1' });
+  for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX08')) sim.assign(t.id, { dump: 'OR1' });
   runNav(sim, 31);
   assert.ok(ds.every((d) => d.resolvedAt != null));
   runNav(sim, 180);
   const tips = sim.state.tips;
   assert.ok(tips.some((x) => x.source === 'EX04' && x.material === 'waste' && x.dump === 'TSF'));
-  assert.ok(tips.some((x) => x.source === 'EX07' && x.oreType === 'OR1' && x.dump === 'OR1'));
+  assert.ok(tips.some((x) => x.source === 'EX08' && x.oreType === 'OR1' && x.dump === 'OR1'));
   assert.equal(sim.summary().violations.filter((v) => v.category === 'process').length, 0);
 });
 
@@ -418,4 +418,57 @@ test('navachab: a closed finger with no alternative is resolved by moving trucks
   for (const t of sim.state.trucks.filter((x) => x.assign.dump === 'MCB')) sim.assign(t.id, { shovel: 'EX08', dump: 'TSF' });
   runNav(sim, 7);
   assert.ok(d.resolvedAt != null);
+});
+
+test('navachab: only 3 units run; a parked unit can be started and parked again', () => {
+  const sim = engine.createSim(navachab(), navScenario('day', { events: [] }), { seed: 1 });
+  const running = () => Object.values(sim.state.shovels).filter((x) => x.status === 'operating').map((x) => x.id).sort();
+  assert.deepEqual(running(), ['EX04', 'EX05', 'EX08']);
+  assert.equal(sim.state.shovels.EX03.status, 'parked');
+  assert.ok(sim.startUnit('EX03').ok);
+  assert.equal(sim.state.shovels.EX03.status, 'starting');
+  runNav(sim, 11);
+  assert.equal(sim.state.shovels.EX03.status, 'operating');
+  assert.ok(sim.parkUnit('EX03').ok);
+  assert.equal(sim.state.shovels.EX03.status, 'parked');
+  assert.equal(sim.startUnit('EX10').ok, false, 'EX10 is still being commissioned');
+});
+
+test('navachab: 8 trucks are unavailable for the shift and never move', () => {
+  const sim = engine.createSim(navachab(), navScenario('day', { events: [] }), { seed: 1 });
+  const out = sim.state.trucks.filter((t) => t.hold && t.hold.kind === 'unavailable');
+  assert.equal(out.length, 8);
+  sim.assign(out[0].id, { shovel: 'EX04', dump: 'MCB' });
+  runNav(sim, 60);
+  assert.equal(out[0].loads, 0);
+  assert.equal(out[0].at, 'WS');
+});
+
+test('navachab: payloads are 90-100 t (HD785) and 80-90 t (CAT 777E)', () => {
+  const sim = engine.createSim(navachab(), navScenario('day', { events: [] }), { seed: 1 });
+  runNav(sim, 180);
+  const byTruck = Object.fromEntries(sim.state.trucks.map((t) => [t.id, t.cls]));
+  const tips = sim.state.tips;
+  assert.ok(tips.length > 50);
+  for (const x of tips) {
+    const [lo, hi] = byTruck[x.truck] === 'HD785' ? [90, 100] : [80, 90];
+    assert.ok(x.tonnes >= lo && x.tonnes <= hi, x.truck + ' ' + x.tonnes);
+  }
+});
+
+test('navachab: PB5 is 4.6 km from TSF Projects', () => {
+  const mine = createMine(navachab().layout);
+  assert.equal(Math.round(mine.routeLength(mine.shortestPath('EX03', 'TSF'))), 4600);
+});
+
+test('poor fragmentation slows loading at the affected unit', () => {
+  const base = navScenario('day', { events: [] });
+  const withFrag = navScenario('day', { events: [{ at: 0, type: 'fragmentation', shovel: 'EX05', factor: 1.7 }] });
+  const rate = (sc) => {
+    const sim = engine.createSim(navachab(), sc, { seed: 1 });
+    for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX08')) sim.assign(t.id, { shovel: 'EX05', dump: 'FWG' });
+    runNav(sim, 120);
+    return sim.state.shovels.EX05.busyTime / Math.max(1, sim.state.shovels.EX05.loads);
+  };
+  assert.ok(rate(withFrag) > rate(base) * 1.3);
 });

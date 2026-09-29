@@ -23,6 +23,7 @@
   const SPOT_SEC = 30;
   const FUEL_SEC = 8 * 60;
   const TRAM_SEC = 8 * 60;
+  const UNIT_START_SEC = 10 * 60;
   const OUT_OF_FUEL_SEC = 45 * 60;
   const CRUSHER_CONTAMINATION_SEC = 20 * 60;
   const BLEND_WINDOW = 6;
@@ -104,8 +105,19 @@
       const home = NODES[def.id];
       state.shovels[def.id] = Object.assign({}, def, {
         status: 'operating', lastForcedOutAt: -Infinity, until: 0, x: home.x, y: home.y, home: { x: home.x, y: home.y },
-        tram: null, queue: [], serving: null, opTime: 0, busyTime: 0, hangTime: 0, loads: 0, tonnes: 0
+        tram: null, queue: [], serving: null, opTime: 0, busyTime: 0, hangTime: 0, loads: 0, tonnes: 0,
+        digFactor: 1
       });
+    }
+    // Sites often run fewer units than they have (e.g. not enough trucks):
+    // units not listed in scenario.running start parked, ready to be started.
+    if (scenario.running) {
+      for (const s of Object.values(state.shovels)) {
+        if (scenario.running.includes(s.id)) continue;
+        s.status = 'parked';
+        s.downReason = 'Not running — available to start';
+        s.until = Infinity;
+      }
     }
     for (const [id, status] of Object.entries(scenario.shovelStatus || {})) {
       const s = state.shovels[id];
@@ -149,6 +161,8 @@
         model: cls.name,
         owner: cls.owner || '',
         payloadT: cls.payloadT,
+        // Actual payload varies per load, e.g. 90-100 t for a nominal 91 t truck.
+        payloadRange: cls.payloadRange || null,
         assign: { shovel: f.shovel, dump: f.dump },
         phase: 'idle',
         purpose: null,
@@ -168,6 +182,13 @@
     // -------------------------------------------------------------- helpers
 
     const truckById = (id) => state.trucks.find((tr) => tr.id === id);
+
+    // Trucks unavailable for the whole shift (no operator, in the workshop).
+    for (const [id, reason] of Object.entries(scenario.unavailable || {})) {
+      const tr = truckById(id);
+      if (!tr) throw new Error('Scenario marks unknown truck ' + id + ' unavailable');
+      tr.hold = { until: Infinity, reason, kind: 'unavailable' };
+    }
 
     function emit(kind, payload) {
       for (const fn of listeners) fn(kind, payload);
@@ -383,7 +404,9 @@
     }
 
     function completeLoad(shovel, truck) {
-      const tonnes = Math.round(truck.payloadT * (0.97 + rng() * 0.06));
+      const tonnes = truck.payloadRange
+        ? Math.round(truck.payloadRange[0] + rng() * (truck.payloadRange[1] - truck.payloadRange[0]))
+        : Math.round(truck.payloadT * (0.97 + rng() * 0.06));
       const grade = shovel.material === 'ore' ? Math.round(shovel.grade * jitter(0.08) * 100) / 100 : 0;
       // The load goes to the dump assigned at loading time; a later change of
       // circuit only applies after this load is tipped.
@@ -467,7 +490,8 @@
           s.serving = truck.id;
           truck.phase = 'loading';
           truck.loadDump = truck.assign.shovel === s.id ? truck.assign.dump : defaultDump(s);
-          truck.serviceLeft = s.loadSec * jitter(0.1) + SPOT_SEC;
+          // digFactor > 1 = harder digging (e.g. a poorly fragmented blast).
+          truck.serviceLeft = s.loadSec * s.digFactor * jitter(0.1) + SPOT_SEC;
         }
       }
       for (const d of Object.values(state.dumps)) {
@@ -495,6 +519,16 @@
 
     function updateEquipment() {
       for (const s of Object.values(state.shovels)) {
+        if (s.status === 'starting' && state.t >= s.until) {
+          s.status = 'operating';
+          s.downReason = null;
+          alert('info', s.name + ' pre-start complete — ready to load.');
+        }
+        if (s.frag && state.t >= s.frag.until) {
+          s.digFactor = 1;
+          s.frag = null;
+          alert('info', s.name + ' is through the poorly fragmented block — digging rate back to normal.');
+        }
         if ((s.status === 'down' || s.status === 'evacuated') && state.t >= s.until) {
           if (s.status === 'evacuated') {
             state.zones = state.zones.filter((z) => z.id !== 'geo-' + s.id);
@@ -773,6 +807,14 @@
           );
           break;
         }
+        case 'fragmentation': {
+          // A poorly fragmented blasted block slows digging at a unit.
+          const s = state.shovels[ev.shovel];
+          s.digFactor = ev.factor || 1.6;
+          s.frag = { until: ev.minutes ? state.t + ev.minutes * 60 : Infinity };
+          alert('warn', ev.text || s.name + ' is digging a poorly fragmented block — loading is slower.');
+          break;
+        }
         case 'shovelReady': {
           // A loading unit released mid-shift (e.g. newly commissioned).
           const s = state.shovels[ev.shovel];
@@ -986,6 +1028,37 @@
       return { ok: true };
     }
 
+    // Start a parked loading unit (operator pre-start takes UNIT_START_SEC).
+    function startUnit(shovelId) {
+      const s = state.shovels[shovelId];
+      if (!s) return { ok: false, reason: 'Unknown loading unit' };
+      if (s.status !== 'parked') return { ok: false, reason: s.name + ' is not parked (currently ' + s.status + ').' };
+      s.status = 'starting';
+      s.until = state.t + UNIT_START_SEC;
+      s.downReason = 'Operator pre-start';
+      record('startUnit', { shovel: shovelId });
+      alert('info', s.name + ' starting up — ready in about ' + UNIT_START_SEC / 60 + ' min.');
+      return { ok: true };
+    }
+
+    // Park a running unit. Trucks still assigned to it will wait there.
+    function parkUnit(shovelId) {
+      const s = state.shovels[shovelId];
+      if (!s) return { ok: false, reason: 'Unknown loading unit' };
+      if (s.status !== 'operating' && s.status !== 'starting') return { ok: false, reason: s.name + ' cannot be parked while ' + s.status + '.' };
+      if (s.serving) {
+        s.queue.unshift(s.serving);
+        truckById(s.serving).phase = 'queueShovel';
+        s.serving = null;
+      }
+      s.status = 'parked';
+      s.until = Infinity;
+      s.downReason = 'Not running — available to start';
+      record('parkUnit', { shovel: shovelId });
+      alert('info', s.name + ' parked.');
+      return { ok: true };
+    }
+
     function tram(shovelId, target) {
       const s = state.shovels[shovelId];
       if (!s || !s.safePos) return { ok: false, reason: 'This unit has no designated safe tramming position.' };
@@ -1112,6 +1185,8 @@
     function summary() {
       const shovels = Object.values(state.shovels).map((s) => ({
         id: s.id, name: s.name, loads: s.loads, tonnes: s.tonnes,
+        targetPerHour: s.targetPerHour || null,
+        loadsPerHour: s.opTime > 0 ? s.loads / (s.opTime / 3600) : 0,
         opTime: s.opTime, busyTime: s.busyTime, hangTime: s.hangTime,
         utilisation: s.opTime > 0 ? s.busyTime / s.opTime : 0
       }));
@@ -1178,6 +1253,8 @@
       assign,
       sendToFuel: (id) => sendToFuel(id, false),
       tram,
+      startUnit,
+      parkUnit,
       confirmBlastClear,
       answerRadio,
       finish,

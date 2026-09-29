@@ -19,7 +19,8 @@
   };
 
   const SHOVEL_STATUS_COLOR = {
-    operating: COLORS.ok, down: COLORS.danger, tramming: COLORS.warn, standby: COLORS.warn, evacuated: COLORS.evac, commissioning: '#8d9ba8'
+    operating: COLORS.ok, down: COLORS.danger, tramming: COLORS.warn, standby: COLORS.warn, evacuated: COLORS.evac, commissioning: '#8d9ba8',
+    parked: '#8d9ba8', starting: COLORS.warn
   };
 
   function createMap(canvas, sim, view) {

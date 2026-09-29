@@ -47,6 +47,8 @@ lib.registerSite({
                                       // stockpile mode: named ore types, one ROM finger each
   dispatchAids: false,                // no FMS on site: no wrong-dump warnings or auto dumps
   utilisationRange: [0.1, 0.35],      // truck-limited sites: utilisation scored on a lower scale
+  runUnits: 3,                        // units normally running; scenarios list them in \`running\`
+  startOrder: ['EX08', …],            // order the reference controller starts parked units
   planWeights: { EX03: 7, … },        // balanced trucks per unit (used by the expert bot)
   oreDumpFor: { EX04: 'ROMH', … },    // stockpile mode: planned finger per ore unit
   wasteDumpFor: { EX03: 'NWRD', … },  // default waste dump per waste unit
@@ -67,6 +69,8 @@ lib.registerSite({
 | `shovels` | `{ id, name, material: 'ore' \| 'waste', oreClass?: 'hg' \| 'lg', grade, label, loadSec, safePos? }`. `safePos` is where the unit trams to for a blast |
 | `dumps` | `{ id, name, short, role: 'crusher' \| 'stockpile' \| 'waste', gradeClass?, bays, dumpSec }`. Needs a crusher or ore stockpile, and at least one waste dump. `gradeClass` marks a ROM finger |
 | `base` | Node id of the workshop, fuel bay and go-line |
+| shovel `targetPerHour` | Hourly loading target per unit. When set, fleet efficiency scores each running unit's loads/h against it |
+| class `payloadRange` | e.g. `[90, 100]`: each load's tonnes are drawn from this range |
 | `pits` | Ellipses drawn as benches: `{ cx, cy, rx, ry, floorShift?, label? }` |
 | `features`, `areas` | Map annotations only: boxes such as the plant `{ x, y, w, h, label }`, and labels such as pushbacks `{ x, y, label }` |
 | `speeds` | Optional truck speed overrides in m/s (`emptyFlat`, `loadedUpRamp`, …) |
@@ -75,7 +79,7 @@ To trace a real mine plan: use the pit plan image in a drawing tool, place nodes
 
 ### Scenarios
 
-A scenario has: `id`, `name`, `durationMin`, `startClockMin`, `speed`, `summary`, `briefing[]`, `blend {min, max}`, `targets {ore, waste}`, `fleet` and `events[]`. Build `fleet` with `lib.scenarioLib.fleet(plan)`, or with `mixedFleet(groups, plan)` for owner and contractor fleets, which interleaves the trucks across loading units. Setting `practice: true` marks the unranked practice shift. Every site needs a practice shift.
+A scenario can also set `running: ['EX04', …]` (other units start parked and can be started with `startUnit`), `unavailable: { N19: 'In workshop' }` (trucks out for the whole shift), `shovelStatus` and `faces`. A scenario has: `id`, `name`, `durationMin`, `startClockMin`, `speed`, `summary`, `briefing[]`, `blend {min, max}`, `targets {ore, waste}`, `fleet` and `events[]`. Build `fleet` with `lib.scenarioLib.fleet(plan)`, or with `mixedFleet(groups, plan)` for owner and contractor fleets, which interleaves the trucks across loading units. Setting `practice: true` marks the unranked practice shift. Every site needs a practice shift.
 
 Event types (the `at` field is minutes from the start of the shift):
 
@@ -85,6 +89,7 @@ Event types (the `at` field is minutes from the start of the shift):
 | `radio` | Use the builders in `lib.scenarioLib`, or write your own: `from`, `message`, `options[{ text, rating, feedback, effects?, severity? }]`, `timeout?`, `timeoutEffects?` |
 | `shovelDown` | `shovel`, `minutes`, `reason` |
 | `crusherDown` | `minutes`, `reason` |
+| `fragmentation` | `shovel`, `factor` (e.g. 1.7× dig time), `minutes`. A poorly fragmented block slows a unit; pair with `fragmentationCall` |
 | `dumpDown` | `dump`, `minutes`, `reason`. Closes any tip, e.g. a ROM finger. A dump with `closed: '<reason>'` in the layout is closed for the whole shift |
 | `faceChange` (alias `oreChange`) | `shovel`, `oreType` (an ore type id, or `'waste'`). Grade control moves a unit onto a new face: another ore type, waste, or from waste back to ore. Loads already on board keep their destination, and the controller must re-route the rest (pair it with `gradeControlCall`). Scenarios can set starting faces with `faces: { EX04: 'MCB', EX07: 'waste' }` |
 | `shovelReady` | `shovel`, `minTrucks`, `text`. Releases a unit that started with `shovelStatus: { ID: 'commissioning' }` on the scenario |

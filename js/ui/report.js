@@ -52,6 +52,20 @@
   }
 
   // Grade control on ROM pad fingers: which ore class went where.
+  // Loading rate of every unit that ran, against its hourly target.
+  function unitPanel(s) {
+    const units = s.shovels.filter((u) => u.targetPerHour && u.opTime >= 600);
+    if (!units.length) return '';
+    const rows = units.map((u) => {
+      const pct = u.loadsPerHour / u.targetPerHour;
+      const color = pct >= 0.9 ? 'var(--ok)' : pct >= 0.7 ? 'var(--warn)' : 'var(--danger)';
+      return '<tr><td>' + esc(u.name) + '</td><td class="num">' + Math.round(u.opTime / 60) + ' min</td><td class="num">' + u.loads +
+        '</td><td class="num" style="color:' + color + '">' + u.loadsPerHour.toFixed(1) + '</td><td class="num">' + u.targetPerHour + '</td></tr>';
+    }).join('');
+    return '<div class="panel full"><h2>Loading units against hourly targets</h2><table class="data-table"><thead><tr><th>Unit</th><th class="num">Running</th><th class="num">Loads</th><th class="num">Loads / h</th><th class="num">Target / h</th></tr></thead><tbody>' +
+      rows + '</tbody></table><p class="muted small">Only units that ran for at least 10 minutes are shown. When trucks are short, a unit can only meet its target if the controller gives it enough trucks for its cycle time.</p></div>';
+  }
+
   function routingPanel(s) {
     const rows = s.routing.byDump.map((b) =>
       '<tr><td>' + esc(b.name) + '</td><td class="num">' + b.loads + '</td><td class="num" style="color:' + (b.wrong ? 'var(--danger)' : 'var(--ok)') + '">' + b.wrong +
@@ -142,7 +156,7 @@
           '<h2>Shift numbers</h2><div class="stat-grid">' + stats + '</div></div>' +
         (s.gradeControl === 'stockpiles' ? routingPanel(s)
           : '<div class="panel full"><h2>Crusher feed blend (rolling 6 loads, ' + esc(unit) + ')</h2>' + blendChart(s) + '<p class="muted small">Green band is the ' + s.blendSpec.min + '–' + s.blendSpec.max + ' ' + esc(unit) + ' specification. Blend is only scored once every ore loading unit has been available for 20 minutes.</p></div>') +
-        '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
+        unitPanel(s) + '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
         '<div class="panel"><h2>Incidents</h2>' + violations + '</div>' +
         '<div class="panel"><h2>Response to disruptions</h2>' + disruptions + '</div>' +
         (s.fleet && s.fleet.length > 1

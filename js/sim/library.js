@@ -470,6 +470,25 @@
     timeoutText: 'A grade control change went unanswered.'
   });
 
+  // A poorly fragmented blasted block slows the unit (pair with the
+  // 'fragmentation' event, which sets the slower dig rate).
+  const fragmentationCall = (at, unit) => ({
+    at, type: 'radio', id: 'fragmentation',
+    from: unit + ' operator',
+    message: unit + ' here. This block is badly fragmented — big boulders and tight digging. It\'s taking me nearly twice as long per truck.',
+    options: [
+      { text: 'Copy. I\'ll take some trucks off you so they don\'t stand in your queue. Put the oversize aside for the rock breaker, and I\'ll report the fragmentation to drill & blast and the supervisor.', rating: 'best',
+        feedback: 'Rebalances the fleet to the slower dig rate, keeps oversize out of the trucks and feeds the problem back to drill & blast.' },
+      { text: 'Dig around the worst of it and tell me when you\'re through.', rating: 'ok',
+        feedback: 'Sensible at the face, but the trucks are still queuing and drill & blast never hear about it.' },
+      { text: 'Load the boulders anyway — we need the tonnes.', rating: 'unsafe', severity: 'major',
+        feedback: 'Oversize can damage truck bodies, fall off on the ramp and block the ROM pad or crusher.' },
+      { text: 'Copy, do the best you can.', rating: 'poor',
+        feedback: 'No change to truck allocation and no report to drill & blast; the lost production just continues.' }
+    ],
+    timeoutText: 'An excavator operator reported poor fragmentation and got no answer.'
+  });
+
   // An operator asks to use a dump that has been closed.
   const closedDumpRequest = (at, truck, dumpName, reason, alternative) => ({
     at, type: 'radio', id: 'closed-dump',
@@ -511,7 +530,7 @@
   return {
     SITES, registerSite, getSite, formatGrade,
     scenarioLib: {
-      fleet, mixedFleet, fatigueAlarm, gradeControlCall, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
+      fleet, mixedFleet, fatigueAlarm, gradeControlCall, fragmentationCall, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
       lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
       geotech, nearMiss, windrow, unknownLv, waterCart,
       lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp

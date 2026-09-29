@@ -235,6 +235,7 @@
 
     function truckStatus(tr) {
       if (tr.hold) {
+        if (tr.hold.until === Infinity) return { text: 'OUT · ' + tr.hold.reason, cls: 'down', title: tr.hold.reason };
         return { text: (tr.hold.kind === 'breakdown' ? 'DOWN ' : 'STOPPED ') + fmtMin(tr.hold.until - state.t), cls: 'down', title: tr.hold.reason };
       }
       const at = tr.at ? view.placeName(tr.at) : '';
@@ -296,8 +297,11 @@
         '<div class="ec-row ec-label"><span class="f-label"></span></div>' +
         '<div class="ec-row"><span>Trucks</span><b class="f-assigned"></b></div>' +
         '<div class="ec-row"><span>Queue</span><b class="f-queue"></b></div>' +
-        '<div class="ec-row"><span>Util.</span><b class="f-util"></b></div>' +
-        (s.safePos ? '<button class="btn btn-sm f-tram" hidden></button>' : '');
+        (s.targetPerHour
+          ? '<div class="ec-row" title="Loads per operating hour against the hourly target"><span>Rate</span><b class="f-util"></b></div>'
+          : '<div class="ec-row"><span>Util.</span><b class="f-util"></b></div>') +
+        (s.safePos ? '<button class="btn btn-sm f-tram" hidden></button>' : '') +
+        (scenario.running ? '<button class="btn btn-sm f-run" hidden></button>' : '');
       equip.appendChild(card);
       shovelCards[s.id] = {
         chip: card.querySelector('.chip'),
@@ -305,8 +309,16 @@
         queue: card.querySelector('.f-queue'),
         util: card.querySelector('.f-util'),
         label: card.querySelector('.f-label'),
-        tram: card.querySelector('.f-tram')
+        tram: card.querySelector('.f-tram'),
+        run: card.querySelector('.f-run')
       };
+      if (shovelCards[s.id].run) {
+        on(shovelCards[s.id].run, 'click', () => {
+          const res = s.status === 'parked' ? sim.startUnit(s.id) : sim.parkUnit(s.id);
+          if (!res.ok) toast(s.name, res.reason, 'error');
+          updateEquipment();
+        });
+      }
       if (shovelCards[s.id].tram) {
         on(shovelCards[s.id].tram, 'click', () => {
           const target = s.status === 'standby' ? 'face' : 'safe';
@@ -344,7 +356,8 @@
 
     const STATUS_CHIP = {
       operating: ['ok', 'Run'], down: ['danger', 'Down'], tramming: ['warn', 'Tram'],
-      standby: ['warn', 'Standby'], evacuated: ['danger', 'Evac'], commissioning: ['muted', 'Wkshop']
+      standby: ['warn', 'Standby'], evacuated: ['danger', 'Evac'], commissioning: ['muted', 'Wkshop'],
+      parked: ['muted', 'Parked'], starting: ['warn', 'Starting']
     };
 
     function updateEquipment() {
@@ -357,7 +370,18 @@
         c.assigned.textContent = state.trucks.filter((t) => t.assign.shovel === s.id).length;
         c.queue.textContent = s.queue.length + (s.serving ? '+1' : '');
         c.queue.title = s.queue.length + ' waiting' + (s.serving ? ', 1 loading' : '');
-        c.util.textContent = s.opTime > 60 ? Math.round((100 * s.busyTime) / s.opTime) + '%' : '—';
+        if (s.targetPerHour) {
+          const rate = s.opTime > 600 ? s.loads / (s.opTime / 3600) : null;
+          c.util.textContent = (rate == null ? '—' : rate.toFixed(1)) + '/' + s.targetPerHour;
+          c.util.style.color = rate == null ? '' : rate >= 0.9 * s.targetPerHour ? 'var(--ok)' : rate >= 0.7 * s.targetPerHour ? 'var(--warn)' : 'var(--danger)';
+        } else {
+          c.util.textContent = s.opTime > 60 ? Math.round((100 * s.busyTime) / s.opTime) + '%' : '—';
+        }
+        if (c.run) {
+          const canPark = s.status === 'operating' || s.status === 'starting';
+          c.run.hidden = !(s.status === 'parked' || canPark);
+          c.run.textContent = s.status === 'parked' ? 'Start' : 'Park';
+        }
         const now = view.loadingText(s);
         const lt = s.label === now ? now : s.label + ' · ' + now;
         if (c.label.textContent !== lt) { c.label.textContent = lt; c.label.parentElement.title = lt; }

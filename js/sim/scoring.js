@@ -18,7 +18,7 @@
     { key: 'production', name: 'Production delivery', weight: 0.20,
       desc: 'Ore and waste tonnes moved against the shift plan.' },
     { key: 'efficiency', name: 'Fleet efficiency', weight: 0.15,
-      desc: 'Matches trucks to loading units: shovel utilisation and truck queueing.' },
+      desc: 'Matches trucks to loading units: unit loading rates (against hourly targets where set) and truck queueing.' },
     { key: 'grade', name: 'Grade & process control', weight: 0.10,
       desc: 'Sends ore to the right place by grade (crusher blend or ROM pad finger) and keeps waste out of ore.' },
     { key: 'decisions', name: 'Radio decision making', weight: 0.15,
@@ -67,12 +67,21 @@
     // Truck-limited sites (long cycles) cannot keep loading units busy, so a
     // site can set the utilisation range that counts as poor → excellent.
     const [uLo, uHi] = s.utilisationRange || [0.35, 0.85];
-    const utilScore = ramp(util, uLo, uHi);
+    let utilScore = ramp(util, uLo, uHi);
+    // Sites with hourly loading targets per unit: score each unit that ran
+    // for at least 30 min on its loads/hour against target (50% → 0, 90% → 1;
+    // truck-limited sites rarely reach 100% even with good dispatch).
+    const targeted = s.shovels.filter((sh) => sh.targetPerHour && sh.opTime >= 1800);
+    let unitTargets = null;
+    if (targeted.length) {
+      unitTargets = targeted.map((sh) => ({ id: sh.id, rate: sh.loadsPerHour, target: sh.targetPerHour }));
+      utilScore = unitTargets.reduce((a, u) => a + ramp(u.rate / u.target, 0.5, 0.9), 0) / unitTargets.length;
+    }
     // Sites whose fleet is larger than the loading units can serve queue by
     // design; queueAllowanceMin shifts the scale so only avoidable queueing counts.
     const allow = s.queueAllowanceMin || 0;
     const queueScore = ramp(s.avgQueueMinPerLoad, 6 + allow, 1 + allow);
-    return { score: 100 * (0.6 * utilScore + 0.4 * queueScore), utilisation: util, avgQueueMin: s.avgQueueMinPerLoad };
+    return { score: 100 * (0.6 * utilScore + 0.4 * queueScore), utilisation: util, avgQueueMin: s.avgQueueMinPerLoad, unitTargets };
   }
 
   function scoreGrade(s) {

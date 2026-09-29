@@ -358,7 +358,8 @@
         c.queue.textContent = s.queue.length + (s.serving ? '+1' : '');
         c.queue.title = s.queue.length + ' waiting' + (s.serving ? ', 1 loading' : '');
         c.util.textContent = s.opTime > 60 ? Math.round((100 * s.busyTime) / s.opTime) + '%' : '—';
-        const lt = s.label + (s.material === 'ore' ? ' · ' + view.loadingText(s) : '');
+        const now = view.loadingText(s);
+        const lt = s.label === now ? now : s.label + ' · ' + now;
         if (c.label.textContent !== lt) { c.label.textContent = lt; c.label.parentElement.title = lt; }
         if (c.tram) {
           const b = state.blast;

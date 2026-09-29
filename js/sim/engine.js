@@ -114,6 +114,24 @@
       s.downReason = status === 'commissioning' ? 'Being assembled / commissioned' : status;
       s.until = Infinity;
     }
+    // A unit's face: an ore type id, or 'waste'. Faces can change mid-shift.
+    function setFace(s, face) {
+      if (face === 'waste') {
+        s.material = 'waste';
+        s.oreType = null;
+      } else {
+        s.material = 'ore';
+        s.oreType = face;
+      }
+    }
+    function describeFace(s) {
+      return s.material === 'waste' ? 'waste' : oreTypeName(oreKey(s));
+    }
+    // Scenario-specific starting faces (ore types vary from day to day).
+    for (const [id, face] of Object.entries(scenario.faces || {})) {
+      if (!state.shovels[id]) throw new Error('Scenario sets a face for unknown unit ' + id);
+      setFace(state.shovels[id], face);
+    }
     for (const def of DUMPS) {
       state.dumps[def.id] = Object.assign({}, def, {
         status: def.closed ? 'down' : 'operating', until: def.closed ? Infinity : 0,
@@ -732,18 +750,24 @@
           );
           break;
         }
-        case 'oreChange': {
-          // Grade control moves a loading unit into a different ore polygon.
+        case 'oreChange':
+        case 'faceChange': {
+          // Grade control moves a loading unit onto a different ore polygon,
+          // or between ore and waste (oreType 'waste' or material 'waste').
           const s = state.shovels[ev.shovel];
-          const from = oreKey(s);
-          s.oreType = ev.oreType;
+          const from = describeFace(s);
+          setFace(s, ev.material === 'waste' || ev.oreType === 'waste' ? 'waste' : ev.oreType);
           if (ev.label) s.label = ev.label;
-          alert('warn', ev.text || s.name + ' is now loading ' + oreTypeName(ev.oreType) + ' (was ' + oreTypeName(from) + ').');
+          const to = describeFace(s);
+          alert('warn', ev.text || s.name + ' is now loading ' + to + ' (was ' + from + ').');
+          const toWaste = s.material === 'waste';
           addDisruption(
-            { id: 'ore-' + s.id + '-' + state.t, type: 'oreChange', label: 'Re-route ' + s.id + ' to ' + oreTypeName(ev.oreType), start: state.t, target: 5 * 60, limit: 20 * 60 },
+            { id: 'face-' + s.id + '-' + state.t, type: 'oreChange', label: 'Re-route ' + s.id + ' to ' + to, start: state.t, target: 5 * 60, limit: 20 * 60 },
             {
-              resolved: () => state.trucks.filter((tr) => tr.assign.shovel === s.id)
-                .every((tr) => (accepts(state.dumps[tr.assign.dump]) || []).includes(ev.oreType)),
+              resolved: () => state.trucks.filter((tr) => tr.assign.shovel === s.id).every((tr) => {
+                const d = state.dumps[tr.assign.dump];
+                return toWaste ? d.role === 'waste' : (accepts(d) || []).includes(s.oreType);
+              }),
               ended: () => false
             }
           );

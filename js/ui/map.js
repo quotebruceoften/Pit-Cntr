@@ -311,7 +311,8 @@
           ctx.stroke();
         }
         if (scale > 0.18 || selected.has(tr.id)) {
-          text(tr.id.replace(/^\D+/, ''), p.x, p.y + r + 8, selected.has(tr.id) ? '#fff' : COLORS.label, 9.5);
+          // Mixed fleets share numbers (N45 / E45), so show the full callsign.
+          text(view.mixedFleet ? tr.id : tr.id.replace(/^\D+/, ''), p.x, p.y + r + 8, selected.has(tr.id) ? '#fff' : COLORS.label, 9.5);
         }
       }
     }

@@ -86,7 +86,7 @@ Event types (the `at` field is minutes from the start of the shift):
 | `shovelDown` | `shovel`, `minutes`, `reason` |
 | `crusherDown` | `minutes`, `reason` |
 | `dumpDown` | `dump`, `minutes`, `reason`. Closes any tip, e.g. a ROM finger. A dump with `closed: '<reason>'` in the layout is closed for the whole shift |
-| `oreChange` | `shovel`, `oreType`. Grade control moves a unit into a new ore polygon; loads already on board keep their finger, and the controller must re-route the rest (pair it with `gradeControlCall`) |
+| `faceChange` (alias `oreChange`) | `shovel`, `oreType` (an ore type id, or `'waste'`). Grade control moves a unit onto a new face: another ore type, waste, or from waste back to ore. Loads already on board keep their destination, and the controller must re-route the rest (pair it with `gradeControlCall`). Scenarios can set starting faces with `faces: { EX04: 'MCB', EX07: 'waste' }` |
 | `shovelReady` | `shovel`, `minTrucks`, `text`. Releases a unit that started with `shovelStatus: { ID: 'commissioning' }` on the scenario |
 | `truckBreakdown` | `truck`, `minutes`, `text`, `radio?` |
 | `fuelLow` | `truck`, `minutes`, `radio?` |

@@ -1,6 +1,6 @@
 # QKR Navachab: site data sheet
 
-Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated. Fleet, loading units, pushbacks, cycle times, ROM fingers, waste dumps, ore flow, radio channels and FMS status are confirmed by site staff; the pit geometry, ore types per unit, targets and procedures are still placeholders. The table below shows what came from public sources and what needs confirming. It also doubles as the data-collection template for onboarding any other mine.
+Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated. Fleet and callsigns, loading units, pushbacks, cycle times, speed limits, ROM fingers, waste dumps, ore flow, radio channels and FMS status are confirmed by site staff. The pit geometry, the specific daily faces, targets and procedures are still placeholders. The table below shows what came from public sources and what needs confirming. It also doubles as the data-collection template for onboarding any other mine.
 
 ## From public sources
 
@@ -20,13 +20,14 @@ Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated.
 |---|---|
 | Role assessed | The **pit-area controller** (Channel 1). A second controller runs the rehandle area on Channel 3 |
 | Active pit | Main Pit only, loading in pushbacks PB3, PB4 and PB5. PB6 is being prepared for waste stripping and is not released (its access road is drawn closed) |
-| Cycle times | PB3 and PB4 are near the end of their life and very deep: about **45 min per cycle** to any stockpile or waste dump, so about 1 load per truck per hour. Modelled with real road lengths (PB3/PB4 ≈ 44–47 min), which makes the fleet truck-limited |
+| Cycle times | PB3 and PB4 are near the end of their life and very deep: about **45 min per cycle** to any stockpile or waste dump, about 1 load per truck per hour. PB5 is about **26 min**. Modelled with real road lengths at the governed speeds, which makes the fleet truck-limited |
 | Loading units | EX03 Hitachi EX1900 · EX04 Hitachi EX1200 · EX05, EX07, EX08 Komatsu PC2000 · EX10 Komatsu PC2000 (new, being assembled in the workshop; starts as "Workshop" and is released mid-shift in the day scenario) · NEX14002 CAT 6015B hydraulic shovel (Trollope Mining), about 4–5 passes / 2.5 min per 91 t truck |
-| QKR haul fleet | 20 × Komatsu HD785, fleet numbers 16, 17, 19, 22, 25, 26, 27, 29, 33, 35, 36, 42–50 |
-| Contractor haul fleet | Eitavelo Mining: 14 × CAT 777E, fleet numbers 71, 41–53 |
+| QKR haul fleet | 20 × Komatsu HD785, called **N** + number on the radio: N16, N17, N19, N22, N25, N26, N27, N29, N33, N35, N36, N42–N50 |
+| Contractor haul fleet | Eitavelo Mining: 14 × CAT 777E, called **E** + number: E71, E41–E53 |
+| Truck speeds | Governed at 40 km/h; 30 km/h maximum down ramps. Loaded up-ramp speed is modelled at about 14 km/h |
 | Dispatch | Pit control dispatches all 34 trucks as one fleet on shared loading units |
 | ROM stockpiles | One finger per ore type, named by the ore loaded. Highest grades: MC Blue, MC Red, Lime; then FW Red, FW Green. Also Purple DM, Purple HG, Brown, Orange 1, Orange 2. Low grade (stockpiled further from the crusher): Yellow, LG Brown, Purple LG |
-| Ore flow | Pit trucks tip ore on the finger for its ore type. Loaders and Komatsu HD325/HD465 trucks rehandle it to the crusher. Grade control is scored as ore reaching the correct finger. A unit can move into a new ore polygon mid-shift (a grade control call), and its trucks must then be re-routed |
+| Ore flow and faces | Pit trucks tip ore on the finger for its ore type. Loaders and Komatsu HD325/HD465 trucks rehandle it to the crusher. **Ore types change from day to day, and one excavator can load several ore types and waste in a shift.** So each scenario starts from different faces, and grade control calls several face changes per shift (ore to ore, waste to ore, ore to waste). The controller must re-route the unit's trucks each time. Loads already on board finish to their original destination |
 | Plants | CIP (main gold extraction), PCP and Argo (mainly recovery). Map annotation only |
 | Waste dumps | TSF Projects is the main waste dump. HME waste dump is closed (dumped to its limit); it is drawn as closed and trucks sent there cannot tip |
 | Radio | Digital radio: pit on Channel 1, rehandle on Channel 3 |
@@ -38,10 +39,9 @@ Status: **DRAFT**. The profile in `js/sites/navachab.js` runs and is calibrated.
 | # | Item | Placeholder now | What to get |
 |---|---|---|---|
 | 1 | Pit and road layout | Schematic Main Pit: PB3 at the bottom, PB4 west, PB5 east, PB6 north-west; one main ramp | Current pit plan: ramps, pushback access roads, intersections, give-ways |
-| 2 | PB5 cycle time | About 26 min to TSF | Typical PB5 cycle time |
-| 3 | Ore type per unit | Start of shift: EX04 MC Blue, NEX14002 MC Red, EX05 FW Green. Scripted polygon changes: EX05 to LG Brown (day), EX04 to Lime (storm), NEX14002 to Purple HG (night) | Which ore types each pushback currently produces, and how often units move between polygons |
+| 3 | Faces used in the scenarios | Starting faces — day: EX04 MC Blue, EX05 FW Green, NEX14002 MC Red; storm: EX04 Lime, EX05 Purple HG, NEX14002 FW Red; night: EX04 Brown, EX05 Yellow, NEX14002 MC Blue. Changes — day: EX05 → LG Brown, EX07 waste → Orange 1, EX04 → waste; storm: EX04 → MC Red, NEX14002 → waste; night: NEX14002 → Purple HG, EX03 waste → Orange 2, EX05 → waste | Whether these are realistic combinations for the pushbacks, and how often faces typically change in a shift |
 | 4 | ROM pad layout | Near fingers in rows beside the crusher; Yellow, LG Brown and Purple LG about 1.3 km further | Finger positions and distances; what "DM" means for Purple DM |
-| 5 | Truck callsigns and payloads | Real numbers; the "HT" (QKR) and "EV" (Eitavelo) prefixes are placeholders, since both fleets use 42–50. 91 t nominal payload | How trucks are called on the radio, and target payloads |
+| 5 | Payloads | 91 t nominal payload for HD785 and CAT 777E | Target payloads |
 | 6 | NEX14002 assignment | PB3 ore (MC Red) with 5 trucks | Which pushback and face the Trollope CAT 6015B works, whether it loads ore or waste, and whether it is dispatched like the QKR units |
 | 7 | Targets | Shift targets calibrated from the expert controller | Planned shift tonnes for ore and waste |
 | 8 | Shift pattern | 06:00 day shift, 18:00 night shift | Shift start times, crib times and handover practice |

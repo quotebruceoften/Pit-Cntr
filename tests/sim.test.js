@@ -265,7 +265,7 @@ test('contractor authorisation: refusing parks the truck; allowing it leads to a
   const site = SITES.find((s) => s.id === 'navachab');
   const lib = require('../js/sim/library.js').scenarioLib;
   const base = site.scenarios.find((s) => s.id === 'storm');
-  const sc = Object.assign({}, base, { events: [lib.contractorAuthorisation(1, 'Eitavelo supervisor', 'EV44', 'main ramp'), lib.contractorAuthorisationFollowUp(20, 'EV44', 'main ramp')] });
+  const sc = Object.assign({}, base, { events: [lib.contractorAuthorisation(1, 'Eitavelo supervisor', 'E44', 'main ramp'), lib.contractorAuthorisationFollowUp(20, 'E44', 'main ramp')] });
   for (const rating of ['best', 'unsafe']) {
     const sim = engine.createSim(site, sc, { seed: 1 });
     while (sim.state.t < 70) sim.step(1, 1 / 15);
@@ -275,7 +275,7 @@ test('contractor authorisation: refusing parks the truck; allowing it leads to a
     const nearMiss = sim.state.violations.some((v) => /lost traction/.test(v.text));
     if (rating === 'best') {
       assert.ok(!nearMiss);
-      assert.ok(sim.state.trucks.find((t) => t.id === 'EV44').hold);
+      assert.ok(sim.state.trucks.find((t) => t.id === 'E44').hold);
     } else {
       assert.ok(nearMiss);
     }
@@ -288,12 +288,12 @@ const runNav = (sim, minutes, control) => {
   while (!sim.state.finished && sim.state.t < minutes * 60) { if (control) control(); sim.step(1, 1 / 15); }
 };
 
-test('navachab: uses the real truck numbers, with owner prefixes to separate duplicate numbers', () => {
+test('navachab: trucks use the site callsigns (N for QKR, E for Eitavelo)', () => {
   const sim = engine.createSim(navachab(), navScenario('day'), { seed: 1 });
   const ids = sim.state.trucks.map((t) => t.id);
   assert.equal(new Set(ids).size, 34);
-  for (const n of [16, 17, 19, 22, 25, 26, 27, 29, 33, 35, 36, 42, 43, 44, 45, 46, 47, 48, 49, 50]) assert.ok(ids.includes('HT' + n));
-  for (const n of [71, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]) assert.ok(ids.includes('EV' + n));
+  for (const n of [16, 17, 19, 22, 25, 26, 27, 29, 33, 35, 36, 42, 43, 44, 45, 46, 47, 48, 49, 50]) assert.ok(ids.includes('N' + n));
+  for (const n of [71, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]) assert.ok(ids.includes('E' + n));
 });
 
 test('navachab: PB6 road is drawn but never used for haulage', () => {
@@ -353,8 +353,51 @@ test('navachab: HME is closed and trucks sent there never tip', () => {
 
 test('assigning an unknown dump or loading unit is rejected', () => {
   const sim = engine.createSim(navachab(), navScenario('day'), { seed: 1 });
-  assert.equal(sim.assign('HT16', { dump: 'NOPE' }).ok, false);
-  assert.equal(sim.assign('HT16', { shovel: 'EX99' }).ok, false);
+  assert.equal(sim.assign('N16', { dump: 'NOPE' }).ok, false);
+  assert.equal(sim.assign('N16', { shovel: 'EX99' }).ok, false);
+});
+
+test('navachab: PB5 cycles are about 26 minutes', () => {
+  const mine = createMine(navachab().layout);
+  for (const unit of ['EX03', 'EX08']) {
+    const p = mine.shortestPath(unit, 'TSF');
+    const min = (mine.travelSeconds(p, true) + mine.travelSeconds(p.slice().reverse(), false)) / 60;
+    assert.ok(min > 20 && min < 24, unit + ' travel ' + min.toFixed(1) + ' min (+ ~3.5 min loading and tipping)');
+  }
+});
+
+test('navachab: trucks respect the 40 km/h governor and 30 km/h on down ramps', () => {
+  const sp = createMine(navachab().layout).SPEEDS;
+  for (const v of Object.values(sp)) assert.ok(v <= 40 / 3.6 + 1e-9);
+  assert.ok(sp.emptyDownRamp <= 30 / 3.6 + 0.01 && sp.loadedDownRamp <= 30 / 3.6 + 0.01);
+});
+
+test('navachab: a unit can switch from ore to waste and from waste to ore mid-shift', () => {
+  const sc = navScenario('day', { events: [
+    { at: 30, type: 'faceChange', shovel: 'EX04', oreType: 'waste' },
+    { at: 30, type: 'faceChange', shovel: 'EX07', oreType: 'OR1' }
+  ] });
+  const sim = engine.createSim(navachab(), sc, { seed: 1 });
+  runNav(sim, 30.1);
+  assert.equal(sim.state.shovels.EX04.material, 'waste');
+  assert.equal(sim.state.shovels.EX07.material, 'ore');
+  assert.equal(sim.state.shovels.EX07.oreType, 'OR1');
+  const ds = sim.state.disruptions.filter((x) => x.type === 'oreChange');
+  assert.equal(ds.length, 2);
+  for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX04')) sim.assign(t.id, { dump: 'TSF' });
+  for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX07')) sim.assign(t.id, { dump: 'OR1' });
+  runNav(sim, 31);
+  assert.ok(ds.every((d) => d.resolvedAt != null));
+  runNav(sim, 180);
+  const tips = sim.state.tips;
+  assert.ok(tips.some((x) => x.source === 'EX04' && x.material === 'waste' && x.dump === 'TSF'));
+  assert.ok(tips.some((x) => x.source === 'EX07' && x.oreType === 'OR1' && x.dump === 'OR1'));
+  assert.equal(sim.summary().violations.filter((v) => v.category === 'process').length, 0);
+});
+
+test('navachab: starting faces differ between scenarios', () => {
+  const faces = navachab().scenarios.map((s) => JSON.stringify(s.faces));
+  assert.ok(new Set(faces).size >= 3);
 });
 
 test('navachab: PB3 and PB4 cycles are about 45 minutes', () => {

@@ -453,12 +453,14 @@
 
   // Grade control moves a unit into a different ore polygon; the controller
   // must re-route its trucks to the matching ROM finger (see 'oreChange' event).
+  // oreName is an ore type name, or 'waste' when the unit moves into waste.
   const gradeControlCall = (at, unit, oreName, stockpile) => ({
     at, type: 'radio', id: 'grade-control',
     from: 'Grade control geologist',
-    message: 'Pit control, grade control. ' + unit + ' is moving into the ' + oreName + ' polygon from the next bucket. All ' + unit + ' loads go to the ' + stockpile + ' until I tell you otherwise.',
+    message: 'Pit control, grade control. ' + unit + ' is moving into ' + (oreName === 'waste' ? 'waste' : 'the ' + oreName + ' polygon') +
+      ' from the next bucket. All ' + unit + ' loads go to ' + stockpile + ' until I tell you otherwise.',
     options: [
-      { text: 'Copy — I\'ll re-route every truck on ' + unit + ' to the ' + stockpile + ' now and confirm when done. Trucks already loaded finish to their original finger.', rating: 'best',
+      { text: 'Copy — I\'ll re-route every truck on ' + unit + ' to ' + stockpile + ' now and confirm when done. Trucks already loaded finish to their original destination.', rating: 'best',
         feedback: 'Acts at once, closes the loop with the geologist, and handles loads already in transit correctly.' },
       { text: 'Copy.', rating: 'ok',
         feedback: 'Acknowledged, but no confirmation back. The geologist cannot tell when the change took effect.' },

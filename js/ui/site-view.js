@@ -87,7 +87,9 @@
       return open(crusher.id) || !stockpile ? crusher.id : stockpile.id;
     }
 
-    const shovelOptions = mine.SHOVELS.map((s) => [s.id, s.id + ' ' + tag(s.id)]).concat([['PARK', 'Park']]);
+    // Sites whose units switch between ore types and waste list units by id only.
+    const facesChange = Object.keys(oreTypes).length > 0;
+    const shovelOptions = mine.SHOVELS.map((s) => [s.id, facesChange ? s.id : s.id + ' ' + tag(s.id)]).concat([['PARK', 'Park']]);
     const dumpOptions = mine.DUMPS.map((d) => [d.id, d.short || d.name]);
     // Truck classes / owners. The first class is drawn as circles, others as squares.
     const classes = site.fleet.classes || {};

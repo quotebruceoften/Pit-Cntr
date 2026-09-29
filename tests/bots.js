@@ -40,6 +40,10 @@ function expertController(sim, opts) {
         sim.answerRadio(call.id, best.index);
       }
     }
+    // Shift start log: write down each operator's call-in accurately.
+    for (const c of s.callIns || []) {
+      if (!s.shiftLog[c.id] && s.real - c.real >= answerAfter) sim.recordLog(c.id, { operator: c.operator, hours: c.hours, fuel: c.fuel });
+    }
     if (s.t - lastCheck < 60) return;
     lastCheck = s.t;
 

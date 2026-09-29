@@ -89,6 +89,12 @@
       actions: [],
       zones: [],
       blast: null,
+      // Start-of-shift call-ins (operator, machine hours, fuel) and what the
+      // controller logged; see the 'hotseat' event.
+      callIns: [],
+      shiftLog: {},
+      hotseat: null,
+      hotseatActive: false,
       totals: { oreCrusher: 0, oreRom: 0, oreLost: 0, waste: 0, queueTime: 0, idleTime: 0 },
       finished: false
     };
@@ -188,6 +194,32 @@
       const tr = truckById(id);
       if (!tr) throw new Error('Scenario marks unknown truck ' + id + ' unavailable');
       tr.hold = { until: Infinity, reason, kind: 'unavailable' };
+    }
+
+    // Shifts that start mid-operation (hotseat: the outgoing crew keeps
+    // loading until the incoming crew arrives): spread trucks through their cycle.
+    if (scenario.startInCycle) {
+      for (const tr of state.trucks) placeInCycle(tr);
+    }
+
+    function placeInCycle(truck) {
+      if (truck.hold || truck.assign.shovel === 'PARK') return;
+      const s = state.shovels[truck.assign.shovel];
+      if (!s || s.status !== 'operating') return;
+      const loaded = rng() < 0.5;
+      if (loaded) {
+        placeAtNode(truck, s.id);
+        const tonnes = truck.payloadRange
+          ? Math.round(truck.payloadRange[0] + rng() * (truck.payloadRange[1] - truck.payloadRange[0]))
+          : truck.payloadT;
+        truck.load = { material: s.material, grade: s.grade, tonnes, source: s.id, dump: truck.assign.dump };
+        if (s.material === 'ore') truck.load.oreType = oreKey(s);
+        routeTo(truck, truck.assign.dump, 'toDump');
+      } else {
+        placeAtNode(truck, truck.assign.dump);
+        routeTo(truck, s.id, 'toShovel');
+      }
+      if (truck.route) moveTruck(truck, rng() * mine.travelSeconds(truck.route, loaded));
     }
 
     function emit(kind, payload) {
@@ -534,7 +566,8 @@
             state.zones = state.zones.filter((z) => z.id !== 'geo-' + s.id);
             alert('info', 'Geotechnical engineer has cleared ' + s.name + ' to resume digging.');
           } else {
-            alert('info', s.name + ' repaired and back in operation.');
+            alert('info', s.hotseat ? s.name + ' changeover complete — new operator loading.' : s.name + ' repaired and back in operation.');
+            s.hotseat = false;
           }
           s.status = 'operating';
           s.downReason = null;
@@ -642,6 +675,10 @@
           // a zone is declared; blast zones have no grace (they are announced).
           const graceOk = state.t - zone.activeFrom <= zone.grace;
           if (graceOk) continue;
+          // A truck that was inside when the zone was declared and has been
+          // withdrawn (sent elsewhere) is driving out, which can take longer
+          // than the grace period on long pit ramps.
+          if (zone.shovel && zone.initialInside && zone.initialInside.includes(tr.id) && tr.assign.shovel !== zone.shovel) continue;
           const flag = zone.id + ':' + severity;
           if (tr.zoneFlags[flag]) continue;
           tr.zoneFlags[flag] = true;
@@ -699,6 +736,8 @@
           violation(e.severity, e.category || 'safety', e.text);
         } else if (e.type === 'alert') {
           alert(e.level || 'info', e.text);
+        } else if (e.type === 'hotseatStart') {
+          startHotseat(e.mode);
         } else if (e.type === 'shovelDown') {
           breakDown(state.shovels[e.shovel], e.minutes, e.reason);
         }
@@ -716,7 +755,9 @@
       s.status = 'evacuated';
       s.until = state.t + minutes * 60;
       s.downReason = 'Geotechnical evacuation';
-      addZone({ id: 'geo-' + id, kind: 'geotech', label: s.name, x: s.home.x, y: s.home.y, r: 260, severity: 'major', activeFrom: state.t, grace: 180 });
+      const zx = s.home.x, zy = s.home.y;
+      const initialInside = state.trucks.filter((tr) => Math.hypot(tr.x - zx, tr.y - zy) <= 260).map((tr) => tr.id);
+      addZone({ id: 'geo-' + id, kind: 'geotech', label: s.name, shovel: id, initialInside, x: zx, y: zy, r: 260, severity: 'major', activeFrom: state.t, grace: 180 });
       alert('danger', s.name + ' evacuated — geotechnical exclusion zone in force. Keep all trucks out.');
       addDisruption(
         { id: 'geo-' + id + '-' + state.t, type: 'geotech', label: 'Withdraw trucks from ' + s.name + ' (geotech)', start: state.t, target: 3 * 60, limit: 15 * 60 },
@@ -747,6 +788,97 @@
           ended: () => s.status !== 'down'
         }
       );
+    }
+
+    // ------------------------------------------------------------ hotseat
+    // At shift change the outgoing crew keeps loading until the incoming crew
+    // arrives (lineup, handover, bus). Each incoming operator swaps in and calls
+    // in their name, the machine's starting hours and fuel level, which the
+    // controller must log. A staggered drop-off costs each machine a few
+    // minutes; stopping everything at once costs the whole pit ~15 minutes.
+    const callSchedule = [];
+    const NAMES = ['J. Shikongo', 'M. Amutenya', 'P. Nangolo', 'S. Haufiku', 'T. Iipinge', 'L. Nekongo', 'A. Shivute',
+      'K. Kambonde', 'R. Gowaseb', 'D. Hoebeb', 'E. Tjiueza', 'F. Kasuto', 'H. van Wyk', 'N. Beukes', 'G. Mouton',
+      'V. Ndeitunga', 'B. Uugwanga', 'C. Shipanga', 'O. Nghidinwa', 'W. Kaulinge', 'I. Nashandi', 'Q. Shaanika',
+      'U. Mbango', 'Y. Tjipura', 'Z. Garoeb', 'X. Awases', 'A. Karita', 'E. Hamutenya', 'M. Shilongo', 'J. Nakale',
+      'P. Kalimbo', 'S. Uushona', 'T. Kandjii', 'L. Mutjavikua', 'K. Nakwafila'];
+
+    function startHotseat(mode) {
+      if (state.hotseat && state.hotseat.started != null) return;
+      const hs = state.hotseat || {};
+      hs.started = state.t;
+      hs.mode = mode || 'staggered';
+      state.hotseat = hs;
+      const units = Object.values(state.shovels).filter((s) => s.status !== 'parked' && s.status !== 'commissioning').map((s) => ({ kind: 'unit', id: s.id }));
+      const trucks = state.trucks.filter((tr) => !(tr.hold && tr.hold.kind === 'unavailable')).map((tr) => ({ kind: 'truck', id: tr.id }));
+      const machines = units.concat(trucks);
+      const names = NAMES.slice();
+      for (let i = names.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [names[i], names[j]] = [names[j], names[i]]; }
+      const spacing = hs.mode === 'staggered' ? 25 : 12;
+      machines.forEach((m, i) => {
+        const isUnit = m.kind === 'unit';
+        const fuel = m.id === hs.lowFuelTruck ? 12 : Math.round(35 + rng() * 60);
+        callSchedule.push({
+          at: state.t + i * spacing, kind: m.kind, id: m.id,
+          operator: names[i % names.length],
+          hours: Math.round((isUnit ? 30000 : 18000) + rng() * (isUnit ? 40000 : 40000)),
+          fuel
+        });
+      });
+      if (hs.mode === 'bunched') {
+        // Everything stops together while the whole crew changes over.
+        for (const tr of state.trucks) if (!tr.hold) holdTruck(tr, 15 * 60, 'hotseat changeover', 'hotseat');
+        for (const s of Object.values(state.shovels)) {
+          if (s.status !== 'operating') continue;
+          s.status = 'down'; s.until = state.t + 15 * 60; s.downReason = 'Hotseat changeover'; s.hotseat = true;
+        }
+        alert('warn', 'Hotseat: all machines stopped together for the crew changeover.');
+      } else {
+        alert('info', 'Hotseat under way: incoming operators changing over machine by machine.');
+      }
+      state.hotseatActive = true;
+    }
+
+    function processCallIns() {
+      while (callSchedule.length && callSchedule[0].at <= state.t) {
+        const c = callSchedule.shift();
+        const entry = { t: state.t, real: state.real, kind: c.kind, id: c.id, operator: c.operator, hours: c.hours, fuel: c.fuel };
+        state.callIns.push(entry);
+        emit('callin', entry);
+        if (state.hotseat.mode === 'staggered') {
+          if (c.kind === 'truck') {
+            const tr = truckById(c.id);
+            if (!tr.hold) holdTruck(tr, 3 * 60, 'hotseat changeover', 'hotseat');
+          } else {
+            const s = state.shovels[c.id];
+            if (s.status === 'operating') {
+              if (s.serving) { s.queue.unshift(s.serving); truckById(s.serving).phase = 'queueShovel'; s.serving = null; }
+              s.status = 'down'; s.until = state.t + 3 * 60; s.downReason = 'Hotseat changeover'; s.hotseat = true;
+            }
+          }
+        }
+        if (c.kind === 'truck' && c.fuel < 20) {
+          // Low fuel reported at call-in: the controller must notice and act.
+          const tr = truckById(c.id);
+          tr.fuelLow = true;
+          tr.fuelDeadline = state.t + 45 * 60;
+          addDisruption(
+            { id: 'fuel-' + tr.id + '-' + state.t, type: 'fuel', label: tr.id + ' low fuel at call-in', start: state.t, target: 10 * 60, limit: 45 * 60 },
+            { resolved: () => tr.pendingFuel || !tr.fuelLow, ended: () => state.t >= tr.fuelDeadline || !tr.fuelLow }
+          );
+        }
+      }
+      if (state.hotseatActive && !callSchedule.length) {
+        const last = state.callIns[state.callIns.length - 1];
+        if (!last || state.t - last.t > 120) state.hotseatActive = false;
+      }
+    }
+
+    // The controller's shift start log entry for a machine.
+    function recordLog(id, entry) {
+      state.shiftLog[id] = { operator: entry.operator || '', hours: entry.hours, fuel: entry.fuel, t: state.t };
+      record('shiftLog', { id });
+      return { ok: true };
     }
 
     function conditionMet(ev) {
@@ -817,6 +949,12 @@
               ended: () => false
             }
           );
+          break;
+        }
+        case 'hotseat': {
+          // The bus has the incoming crew: the controller decides how to drop them.
+          state.hotseat = { calledAt: state.t, lowFuelTruck: ev.lowFuelTruck || null };
+          if (ev.radio) issueRadio(ev.radio); else startHotseat(ev.mode || 'staggered');
           break;
         }
         case 'fragmentation': {
@@ -1151,6 +1289,7 @@
       checkZones();
       checkDisruptions();
       checkRadioTimeouts();
+      processCallIns();
       if (state.t >= state.duration) finish();
     }
 
@@ -1251,6 +1390,7 @@
           firedAt: state.blast.firedAt, delayed: state.blast.delayed
         } : null,
         actionCount: state.actions.length,
+        shiftLog: state.callIns.length ? { callIns: state.callIns.slice(), logged: Object.assign({}, state.shiftLog) } : null,
         actions: state.actions.slice(),
         realSeconds: state.real
       };
@@ -1269,6 +1409,7 @@
       parkUnit,
       confirmBlastClear,
       answerRadio,
+      recordLog,
       finish,
       summary,
       clock,

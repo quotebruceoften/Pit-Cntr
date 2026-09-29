@@ -66,6 +66,21 @@
       rows + '</tbody></table><p class="muted small">Only units that ran for at least 10 minutes are shown. When trucks are short, a unit can only meet its target if the controller gives it enough trucks for its cycle time.</p></div>';
   }
 
+  // Shift start log: what each operator called in against what was written down.
+  function shiftLogPanel(log) {
+    if (!log) return '';
+    const cell = (ok, value) => '<td style="color:' + (ok ? 'var(--ok)' : 'var(--danger)') + '">' + (ok ? '✓ ' : '✗ ') +
+      (value == null || value === '' ? '<span class="muted">not logged</span>' : esc(value)) + '</td>';
+    const rows = log.rows.map((r) => {
+      const e = r.logged || {};
+      return '<tr><td><b>' + esc(r.id) + '</b></td><td class="small">' + esc(r.callIn.operator) + ' · ' + r.callIn.hours + ' h · ' + r.callIn.fuel + '%</td>' +
+        cell(r.ok.operator, e.operator) + cell(r.ok.hours, e.hours) + cell(r.ok.fuel, e.fuel) + '</tr>';
+    }).join('');
+    return '<div class="panel full"><h2>Shift start log (' + log.correct + ' of ' + log.fields + ' fields correct)</h2>' +
+      '<table class="data-table"><thead><tr><th>Machine</th><th>Called in</th><th>Operator logged</th><th>Hours logged</th><th>Fuel logged</th></tr></thead><tbody>' +
+      rows + '</tbody></table><p class="muted small">At hotseat every incoming operator calls in their name, the machine\'s starting hours and fuel level. The pit controller must record them accurately. Counts towards Grade, process &amp; records.</p></div>';
+  }
+
   function routingPanel(s) {
     const rows = s.routing.byDump.map((b) =>
       '<tr><td>' + esc(b.name) + '</td><td class="num">' + b.loads + '</td><td class="num" style="color:' + (b.wrong ? 'var(--danger)' : 'var(--ok)') + '">' + b.wrong +
@@ -156,7 +171,7 @@
           '<h2>Shift numbers</h2><div class="stat-grid">' + stats + '</div></div>' +
         (s.gradeControl === 'stockpiles' ? routingPanel(s)
           : '<div class="panel full"><h2>Crusher feed blend (rolling 6 loads, ' + esc(unit) + ')</h2>' + blendChart(s) + '<p class="muted small">Green band is the ' + s.blendSpec.min + '–' + s.blendSpec.max + ' ' + esc(unit) + ' specification. Blend is only scored once every ore loading unit has been available for 20 minutes.</p></div>') +
-        unitPanel(s) + '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
+        unitPanel(s) + shiftLogPanel(d.grade && d.grade.log) + '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
         '<div class="panel"><h2>Incidents</h2>' + violations + '</div>' +
         '<div class="panel"><h2>Response to disruptions</h2>' + disruptions + '</div>' +
         (s.fleet && s.fleet.length > 1

@@ -497,9 +497,71 @@ test('navachab: acting on an old machine\'s warning costs a short stop; ignoring
   assert.ok(downFor('poor') > 50, 'ignored warning leads to a ~60 min failure');
 });
 
-test('navachab: shifts follow the site roster (day 06:00, afternoon 14:00, night 22:00)', () => {
+test('navachab: shifts follow the site roster (day 07:00, afternoon 15:00, night 23:00)', () => {
   const starts = Object.fromEntries(navachab().scenarios.map((s) => [s.id, s.startClockMin / 60]));
-  assert.equal(starts.day, 6);
-  assert.equal(starts.storm, 14);
-  assert.equal(starts.night, 22);
+  assert.equal(starts.day, 7);
+  assert.equal(starts.storm, 15);
+  assert.equal(starts.night, 23);
+});
+
+// ---------------------------------------------------------------- hotseat
+
+function runHotseat(choose, log) {
+  const site = navachab();
+  const sc = site.scenarios.find((s) => s.id === 'practice');
+  const sim = engine.createSim(site, sc, { seed: 7 });
+  while (!sim.state.finished) {
+    for (const call of sim.state.radio.slice()) {
+      if (call.key === 'hotseat-bus') {
+        const opt = call.options.find((o) => o.rating === choose);
+        if (opt) sim.answerRadio(call.id, opt.index);
+      }
+    }
+    if (log) for (const c of sim.state.callIns) if (!sim.state.shiftLog[c.id]) sim.recordLog(c.id, log(c));
+    sim.step(1, 1 / 15);
+  }
+  return sim;
+}
+
+test('navachab: shifts start mid-cycle, not with every truck at the go-line', () => {
+  const site = navachab();
+  const sim = engine.createSim(site, site.scenarios.find((s) => s.id === 'day'), { seed: 3 });
+  const active = sim.state.trucks.filter((tr) => !tr.hold && tr.assign.shovel !== 'PARK');
+  const phases = new Set(active.map((tr) => tr.phase));
+  assert.ok(phases.has('toDump') && phases.has('toShovel'), 'some trucks loaded, some empty: ' + [...phases].join(','));
+  const spots = new Set(active.map((tr) => Math.round(tr.x / 20) + ',' + Math.round(tr.y / 20)));
+  assert.ok(spots.size >= active.length * 0.6, 'trucks spread along the haul roads');
+});
+
+test('hotseat: every running unit and available truck calls in operator, hours and fuel', () => {
+  const sim = runHotseat('best');
+  const s = sim.state;
+  const running = Object.values(s.shovels).filter((u) => u.status !== 'parked' && u.status !== 'commissioning').length;
+  const trucks = s.trucks.filter((tr) => !(tr.hold && tr.hold.kind === 'unavailable')).length;
+  assert.equal(s.callIns.length, running + trucks);
+  assert.equal(s.callIns[0].kind, 'unit', 'loading units change over first');
+  for (const c of s.callIns) {
+    assert.ok(c.operator && Number.isInteger(c.hours) && Number.isInteger(c.fuel), c.id);
+  }
+  const low = s.callIns.find((c) => c.id === 'N48');
+  assert.ok(low.fuel < 20, 'scripted low-fuel truck reports low fuel');
+});
+
+test('hotseat: a staggered changeover loses less production than stopping everything at once', () => {
+  const tonnes = (sim) => Object.values(sim.state.shovels).reduce((a, u) => a + u.tonnes, 0);
+  const staggered = runHotseat('best');
+  const bunched = runHotseat('poor');
+  assert.equal(staggered.state.hotseat.mode, 'staggered');
+  assert.equal(bunched.state.hotseat.mode, 'bunched');
+  assert.ok(tonnes(staggered) > tonnes(bunched), tonnes(staggered) + ' vs ' + tonnes(bunched));
+});
+
+test('hotseat: the shift start log is scored field by field', () => {
+  const exact = score(runHotseat('best', (c) => ({ operator: c.operator, hours: c.hours, fuel: c.fuel })).summary());
+  const sloppy = score(runHotseat('best', (c) => ({ operator: c.operator.split(' ').pop().toUpperCase(), hours: String(c.hours + 10), fuel: c.fuel + '%' })).summary());
+  const none = score(runHotseat('best').summary());
+  assert.equal(exact.detail.grade.log.pct, 100);
+  assert.ok(Math.abs(sloppy.detail.grade.log.pct - 200 / 3) < 0.01, 'surname and fuel right, hours wrong');
+  assert.equal(none.detail.grade.log.pct, 0);
+  assert.ok(exact.competencies.grade > none.competencies.grade);
 });

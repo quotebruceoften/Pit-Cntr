@@ -512,6 +512,27 @@
     reason: 'Major hydraulic failure after the warning was ignored'
   });
 
+  // Hotseat: the bus has the incoming crew. How the controller drops them
+  // decides how much production the changeover costs.
+  const hotseatBus = (at, driver) => ({
+    at, id: 'hotseat-bus', timeout: 30,
+    from: driver || 'Crew bus driver',
+    message: 'Pit control, crew bus. I\'ve got the incoming crew on board and I\'m at the pit entrance. Where do you want me to drop them?',
+    options: [
+      { text: 'Drop the loading unit operators at their machines first, then the truck operators at the hotseat bay. I\'ll call the trucks in one at a time so the diggers never stand.', rating: 'best',
+        effects: [{ type: 'hotseatStart', mode: 'staggered' }],
+        feedback: 'A staggered hotseat keeps the loading units working and costs each truck only a few minutes.' },
+      { text: 'Drop everyone at the go-line — I\'ll call all the trucks in now.', rating: 'poor',
+        effects: [{ type: 'hotseatStart', mode: 'bunched' }],
+        feedback: 'Stopping every machine at once idles the whole pit for the changeover and bunches the trucks afterwards.' },
+      { text: 'Just drop them wherever is easiest for you.', rating: 'poor',
+        effects: [{ type: 'hotseatStart', mode: 'bunched' }],
+        feedback: 'Without a plan the changeover becomes a free-for-all: machines stop at random and people walk around active equipment.' }
+    ],
+    timeoutEffects: [{ type: 'hotseatStart', mode: 'bunched' }],
+    timeoutText: 'The crew bus got no drop-off plan; the changeover happened all at once.'
+  });
+
   // An operator asks to use a dump that has been closed.
   const closedDumpRequest = (at, truck, dumpName, reason, alternative) => ({
     at, type: 'radio', id: 'closed-dump',
@@ -553,7 +574,7 @@
   return {
     SITES, registerSite, getSite, formatGrade,
     scenarioLib: {
-      fleet, mixedFleet, fatigueAlarm, gradeControlCall, fragmentationCall, equipmentWarning, equipmentWarningFollowUp, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
+      fleet, mixedFleet, hotseatBus, fatigueAlarm, gradeControlCall, fragmentationCall, equipmentWarning, equipmentWarningFollowUp, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
       lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
       geotech, nearMiss, windrow, unknownLv, waterCart,
       lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp

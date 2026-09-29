@@ -217,6 +217,21 @@ select { padding-right: 6px; }
 
 .blast-panel { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); flex-shrink: 0; }
 .blast-panel h3 { color: var(--danger); }
+.shiftlog-panel { flex-shrink: 0; display: flex; flex-direction: column; max-height: 44vh; padding: 10px 12px; }
+.shiftlog-panel.hot { border-color: var(--info); }
+.shiftlog-count { float: right; font-family: var(--mono); text-transform: none; letter-spacing: 0; }
+.shiftlog-help { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.shiftlog-rows { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
+.cl-row { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--panel-2); }
+.cl-row.done { opacity: 0.75; }
+.cl-said { font-size: 12.5px; margin-bottom: 6px; color: var(--text); }
+.cl-said::before { content: "📻 "; }
+.cl-said time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
+.cl-inputs { display: grid; grid-template-columns: 58px minmax(0, 1.6fr) minmax(0, 1fr) 52px auto; gap: 4px; align-items: center; }
+.cl-inputs b { font-family: var(--mono); font-size: 12.5px; }
+.cl-inputs input { padding: 3px 6px; font-size: 12.5px; min-width: 0; }
+.cl-inputs .btn { padding: 3px 8px; font-size: 12px; }
+.tb-hotseat { color: var(--info); font-weight: 700; }
 .blast-times { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; font-size: 12.5px; }
 .blast-times div { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; }
 .blast-times b { display: block; font-family: var(--mono); font-size: 15px; }

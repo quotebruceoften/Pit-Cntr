@@ -10,7 +10,7 @@ Each mine is one file in `js/sites/`. That file describes the mine's layout, fle
    - loading units and their faces,
    - dump points,
    - grade specification,
-   - shift times and targets,
+   - shift times, hotseat practice, start-of-shift records and targets,
    - the TARPs (trigger action response plans) and procedures that cover the scenario events.
 2. **Copy a profile.** Copy `js/sites/navachab.js` to `js/sites/<site-id>.js`, then change its `id`, `name`, `location` and the other fields.
 3. **Register it.** Add a `<script src="js/sites/<site-id>.js"></script>` line to `index.html`. Also add a `require('../js/sites/<site-id>.js')` line to `tests/sim.test.js`.
@@ -79,7 +79,7 @@ To trace a real mine plan: use the pit plan image in a drawing tool, place nodes
 
 ### Scenarios
 
-A scenario can also set `running: ['EX04', …]` (other units start parked and can be started with `startUnit`), `unavailable: { N19: 'In workshop' }` (trucks out for the whole shift), `shovelStatus` and `faces`. A scenario has: `id`, `name`, `durationMin`, `startClockMin`, `speed`, `summary`, `briefing[]`, `blend {min, max}`, `targets {ore, waste}`, `fleet` and `events[]`. Build `fleet` with `lib.scenarioLib.fleet(plan)`, or with `mixedFleet(groups, plan)` for owner and contractor fleets, which interleaves the trucks across loading units. Setting `practice: true` marks the unranked practice shift. Every site needs a practice shift.
+A scenario can also set `running: ['EX04', …]` (other units start parked and can be started with `startUnit`), `unavailable: { N19: 'In workshop' }` (trucks out for the whole shift), `shovelStatus` and `faces`. A scenario can also set `startInCycle: true` (trucks start spread through their haul cycle, as at a hotseat shift change rather than a cold start) and `hotseatSpeed` (a slower shift speed while operators call in, so candidates can write the call-ins down). A scenario has: `id`, `name`, `durationMin`, `startClockMin`, `speed`, `summary`, `briefing[]`, `blend {min, max}`, `targets {ore, waste}`, `fleet` and `events[]`. Build `fleet` with `lib.scenarioLib.fleet(plan)`, or with `mixedFleet(groups, plan)` for owner and contractor fleets, which interleaves the trucks across loading units. Setting `practice: true` marks the unranked practice shift. Every site needs a practice shift.
 
 Event types (the `at` field is minutes from the start of the shift):
 
@@ -98,11 +98,12 @@ Event types (the `at` field is minutes from the start of the shift):
 | `blast` | `shovel`, `blastIn`, `guard`, `reentry`, `radius` (the shovel needs a `safePos`) |
 | `standDown` | `minutes`, `reason`, `text`. Parks the whole pit, e.g. for a lightning TARP |
 | `available` | `trucks[]`, `text`. Parked trucks become available to assign |
+| `hotseat` | `lowFuelTruck?`, `radio?` (usually `hotseatBus(at)`), `mode?`. The incoming crew arrives. Each running unit, then each available truck, calls in operator, starting hours and fuel, which the controller logs with `sim.recordLog(id, { operator, hours, fuel })`. Staggered changeovers stop each machine for ~3 min; bunched ones stop everything for 15 min. `lowFuelTruck` reports low fuel at call-in |
 | `violation` | `severity`, `category`, `text`. Usually used as a follow-up with `when: { flag, is }` |
 
-Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`, `shovelDown`.
+Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`, `shovelDown`, `hotseatStart` (`mode: 'staggered' | 'bunched'`).
 
-Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea`, `fatigueAlarm`, `gradeControlCall`, `closedDumpRequest`, `equipmentWarning` (plus `…FollowUp` consequences).
+Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea`, `fatigueAlarm`, `gradeControlCall`, `closedDumpRequest`, `hotseatBus`, `equipmentWarning` (plus `…FollowUp` consequences).
 
 ## Calibration
 

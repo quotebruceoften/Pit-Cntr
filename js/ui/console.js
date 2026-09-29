@@ -89,6 +89,8 @@
     $('kpi-blend').className = 'tb-blend';
     $('event-log').innerHTML = '';
     $('radio-panel').innerHTML = '';
+    $('shiftlog-rows').innerHTML = '';
+    $('shiftlog-panel').hidden = true;
     $('toast-host').innerHTML = '';
     $('btn-mute').textContent = '🔔';
 
@@ -236,6 +238,7 @@
     function truckStatus(tr) {
       if (tr.hold) {
         if (tr.hold.until === Infinity) return { text: 'OUT · ' + tr.hold.reason, cls: 'down', title: tr.hold.reason };
+        if (tr.hold.kind === 'hotseat') return { text: 'HOTSEAT ' + fmtMin(tr.hold.until - state.t), cls: 'fuel', title: 'Operator changeover' };
         return { text: (tr.hold.kind === 'breakdown' ? 'DOWN ' : 'STOPPED ') + fmtMin(tr.hold.until - state.t), cls: 'down', title: tr.hold.reason };
       }
       const at = tr.at ? view.placeName(tr.at) : '';
@@ -363,7 +366,7 @@
     function updateEquipment() {
       for (const s of Object.values(state.shovels)) {
         const c = shovelCards[s.id];
-        const [cls, label] = STATUS_CHIP[s.status] || ['muted', s.status];
+        const [cls, label] = s.status === 'down' && s.hotseat ? ['info', 'Hotseat'] : STATUS_CHIP[s.status] || ['muted', s.status];
         c.chip.className = 'chip ' + cls;
         c.chip.textContent = label;
         c.chip.title = s.downReason ? s.downReason + (s.until > state.t ? ' — est. ' + fmtMin(s.until - state.t) : '') : '';
@@ -530,6 +533,60 @@
       }
     }
 
+    // ------------------------------------------------------ shift start log
+    // Each incoming operator calls in once (name, starting hours, fuel). The
+    // spoken call-in stays on screen for CALLIN_SHOW real seconds; the
+    // controller types it into the log.
+    const CALLIN_SHOW = 30;
+    const logRows = [];
+    const unitName = (id) => (state.shovels[id] ? state.shovels[id].name : id);
+
+    function updateShiftLog() {
+      const panel = $('shiftlog-panel');
+      while (logRows.length < state.callIns.length) {
+        const c = state.callIns[logRows.length];
+        const who = c.kind === 'unit' ? unitName(c.id) : c.id;
+        const el = document.createElement('div');
+        el.className = 'cl-row';
+        el.innerHTML =
+          '<div class="cl-said"><time>' + sim.clock(c.t) + '</time>' + esc(who) + ': operator ' + esc(c.operator) +
+          ' on. Starting hours ' + c.hours.toLocaleString('en-US').replace(/,/g, ' ') + ', fuel ' + c.fuel + '%.</div>' +
+          '<div class="cl-inputs"><b>' + esc(c.id) + '</b>' +
+          '<input class="cl-op" placeholder="Operator" aria-label="' + esc(c.id) + ' operator" autocomplete="off">' +
+          '<input class="cl-hours" placeholder="Hours" inputmode="numeric" aria-label="' + esc(c.id) + ' starting hours" autocomplete="off">' +
+          '<input class="cl-fuel" placeholder="Fuel %" inputmode="numeric" aria-label="' + esc(c.id) + ' fuel %" autocomplete="off">' +
+          '<button class="btn cl-save">Log</button></div>';
+        $('shiftlog-rows').prepend(el); // newest call-in on top
+        const row = { c, el, said: el.querySelector('.cl-said') };
+        const inputs = [...el.querySelectorAll('input')];
+        const save = () => {
+          sim.recordLog(c.id, { operator: inputs[0].value.trim(), hours: inputs[1].value.trim(), fuel: inputs[2].value.trim() });
+          el.classList.add('done');
+          el.querySelector('.cl-save').textContent = '✓';
+          updateShiftLogCount();
+        };
+        on(el.querySelector('.cl-save'), 'click', save);
+        inputs.forEach((inp) => on(inp, 'keydown', (e) => { if (e.key === 'Enter') save(); }));
+        inputs.forEach((inp) => on(inp, 'input', () => {
+          if (el.classList.contains('done')) { el.classList.remove('done'); el.querySelector('.cl-save').textContent = 'Log'; }
+        }));
+        logRows.push(row);
+        panel.hidden = false;
+        beeper.beep('radio');
+      }
+      for (const r of logRows) {
+        if (r.said && state.real - r.c.real > CALLIN_SHOW) { r.said.remove(); r.said = null; }
+      }
+      panel.classList.toggle('hot', !!state.hotseatActive);
+      updateShiftLogCount();
+    }
+
+    function updateShiftLogCount() {
+      if (!logRows.length) return;
+      const n = Object.keys(state.shiftLog).length;
+      $('shiftlog-count').textContent = n + '/' + logRows.length + ' logged';
+    }
+
     // ---------------------------------------------------------------- alerts
     function toast(title, body, cls, ms) {
       const host = $('toast-host');
@@ -555,7 +612,8 @@
 
     function updateTopbar() {
       $('tb-clock').textContent = sim.clock(state.t);
-      $('tb-left').textContent = fmtMin(state.duration - state.t) + ' left' + (paused ? ' · PAUSED' : '');
+      $('tb-left').innerHTML = fmtMin(state.duration - state.t) + ' left' + (paused ? ' · PAUSED' : '') +
+        (state.hotseatActive ? ' · <span class="tb-hotseat">HOTSEAT</span>' : '');
       const ore = state.totals.oreCrusher + state.totals.oreRom;
       const t = scenario.targets;
       $('kpi-ore').style.width = Math.min(100, (100 * ore) / t.ore) + '%';
@@ -589,6 +647,7 @@
       updateEquipment();
       updateBlast();
       renderRadio();
+      updateShiftLog();
       updateLog();
     }
 
@@ -617,7 +676,9 @@
       if (stopped) return;
       const dt = Math.min(0.25, Math.max(0, (now - last) / 1000));
       last = now;
-      if (!paused) sim.step(dt * speed, dt);
+      // The hotseat call-ins run slower so they can be written down.
+      const eff = state.hotseatActive && scenario.hotseatSpeed ? Math.min(speed, scenario.hotseatSpeed) : speed;
+      if (!paused) sim.step(dt * eff, dt);
       if (stopped) return;
       map.render(selected);
       updateRadioTimers();

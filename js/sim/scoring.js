@@ -19,8 +19,8 @@
       desc: 'Ore and waste tonnes moved against the shift plan.' },
     { key: 'efficiency', name: 'Fleet efficiency', weight: 0.15,
       desc: 'Matches trucks to loading units: unit loading rates (against hourly targets where set) and truck queueing.' },
-    { key: 'grade', name: 'Grade & process control', weight: 0.10,
-      desc: 'Sends ore to the right place by grade (crusher blend or ROM pad finger) and keeps waste out of ore.' },
+    { key: 'grade', name: 'Grade, process & records', weight: 0.10,
+      desc: 'Sends ore to the right place by grade (crusher blend or ROM pad finger), keeps waste out of ore, and keeps accurate shift records.' },
     { key: 'decisions', name: 'Radio decision making', weight: 0.15,
       desc: 'Quality and speed of instructions given in response to radio calls.' },
     { key: 'awareness', name: 'Situational awareness', weight: 0.10,
@@ -93,11 +93,40 @@
       pct = s.crusher.graded ? (100 * s.crusher.inSpec) / s.crusher.graded : 0;
     }
     let score = pct;
+    // Sites with start-of-shift call-ins: 30% of this competency is how
+    // accurately the controller logged operator, starting hours and fuel.
+    const log = scoreShiftLog(s);
+    if (log) score = 0.7 * pct + 0.3 * log.pct;
     for (const v of s.violations) {
       // Misrouted loads are already reflected in the routing percentage.
       if (v.category === 'process' && v.code !== 'misroute') score -= PROCESS_PENALTY[v.severity] || 0;
     }
-    return { score: clamp(score, 0, 100), inSpecPct: pct };
+    return { score: clamp(score, 0, 100), inSpecPct: pct, log };
+  }
+
+  const normName = (x) => String(x || '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean);
+  const num = (x) => {
+    const v = parseInt(String(x == null ? '' : x).replace(/[^0-9]/g, ''), 10);
+    return Number.isFinite(v) ? v : null;
+  };
+
+  // Field-by-field accuracy of the shift start log against what was called in.
+  function scoreShiftLog(s) {
+    if (!s.shiftLog || !s.shiftLog.callIns.length) return null;
+    let correct = 0;
+    const rows = s.shiftLog.callIns.map((c) => {
+      const e = s.shiftLog.logged[c.id] || {};
+      const surname = normName(c.operator).pop();
+      const ok = {
+        operator: normName(e.operator).includes(surname),
+        hours: num(e.hours) === c.hours,
+        fuel: num(e.fuel) === c.fuel
+      };
+      correct += ok.operator + ok.hours + ok.fuel;
+      return { id: c.id, callIn: c, logged: s.shiftLog.logged[c.id] || null, ok };
+    });
+    const fields = rows.length * 3;
+    return { pct: (100 * correct) / fields, correct, fields, rows };
   }
 
   function scoreDecisions(s) {

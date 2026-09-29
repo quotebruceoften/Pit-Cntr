@@ -56,7 +56,7 @@
     const { mismatch } = view;
     const SHOVEL_OPTS = view.shovelOptions;
     const DUMP_OPTS = view.dumpOptions;
-    const crusherId = sim.mine.crusher().id;
+    const crusherId = sim.mine.crusher() ? sim.mine.crusher().id : null;
     const ac = new AbortController();
     const on = (el, ev, fn) => el.addEventListener(ev, fn, { signal: ac.signal });
     const beeper = createBeeper();
@@ -78,7 +78,15 @@
     $('speed-controls').hidden = !practice;
     $('speed-select').value = String(speed);
     $('btn-pause').textContent = '❚❚';
-    $('kpi-blend-spec').textContent = 'spec ' + scenario.blend.min.toFixed(1) + '–' + scenario.blend.max.toFixed(1) + ' ' + view.unit;
+    if (view.stockpileMode) {
+      $('kpi-blend-label').textContent = 'Ore routing';
+      $('kpi-blend-spec').textContent = 'loads to correct ROM finger';
+    } else {
+      $('kpi-blend-label').textContent = 'Crusher blend';
+      $('kpi-blend-spec').textContent = 'spec ' + scenario.blend.min.toFixed(1) + '–' + scenario.blend.max.toFixed(1) + ' ' + view.unit;
+    }
+    $('kpi-blend').textContent = '—';
+    $('kpi-blend').className = 'tb-blend';
     $('event-log').innerHTML = '';
     $('radio-panel').innerHTML = '';
     $('toast-host').innerHTML = '';
@@ -321,7 +329,7 @@
 
     const STATUS_CHIP = {
       operating: ['ok', 'Operating'], down: ['danger', 'Down'], tramming: ['warn', 'Tramming'],
-      standby: ['warn', 'Standby'], evacuated: ['danger', 'Evacuated']
+      standby: ['warn', 'Standby'], evacuated: ['danger', 'Evacuated'], commissioning: ['muted', 'Workshop']
     };
 
     function updateEquipment() {
@@ -502,8 +510,17 @@
       $('kpi-ore-text').textContent = Math.round(ore).toLocaleString() + ' / ' + t.ore.toLocaleString() + ' t';
       $('kpi-waste').style.width = Math.min(100, (100 * state.totals.waste) / t.waste) + '%';
       $('kpi-waste-text').textContent = Math.round(state.totals.waste).toLocaleString() + ' / ' + t.waste.toLocaleString() + ' t';
-      const last = state.tips.filter((x) => x.dump === crusherId).pop();
       const bl = $('kpi-blend');
+      if (view.stockpileMode) {
+        const routed = state.tips.filter((x) => x.correctFinger != null);
+        if (routed.length) {
+          const pct = Math.round((100 * routed.filter((x) => x.correctFinger).length) / routed.length);
+          bl.textContent = pct + '%';
+          bl.title = routed.length + ' ore loads tipped';
+          bl.className = 'tb-blend ' + (pct === 100 ? 'in' : 'out');
+        }
+      }
+      const last = crusherId && state.tips.filter((x) => x.dump === crusherId).pop();
       if (last) {
         bl.textContent = last.blend.toFixed(view.decimals);
         bl.title = view.grade(last.blend);

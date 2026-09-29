@@ -39,8 +39,14 @@ lib.registerSite({
       CAT777E: { name: 'CAT 777E', payloadT: 91, owner: 'Eitavelo Mining (contractor)', tag: 'Eitavelo' }
     }
   },
-  planWeights: { EX1: 5, … },         // balanced trucks per unit (used by the expert bot)
-  wasteDumpFor: { EX3: 'NWRD', … },   // default waste dump per waste unit
+  gradeControl: 'blend' | 'stockpiles',
+                                      // blend: trucks tip ore into the crusher, scored on feed blend
+                                      // stockpiles: trucks tip on ROM fingers by grade class
+                                      //   (a separate rehandle crew feeds the plant), scored on routing
+  planWeights: { EX03: 7, … },        // balanced trucks per unit (used by the expert bot)
+  oreDumpFor: { EX04: 'ROMH', … },    // stockpile mode: planned finger per ore unit
+  wasteDumpFor: { EX03: 'NWRD', … },  // default waste dump per waste unit
+  queueAllowanceMin: 3,               // expected queueing when the fleet exceeds loading capacity
   layout: { … },                      // see below
   scenarios: [ … ]
 });
@@ -53,11 +59,12 @@ lib.registerSite({
 | `width`, `height` | Map extent in map units |
 | `metersPerUnit` | Converts map distances to haul metres. Tune it so cycle times match the site's |
 | `nodes` | `{ id: { x, y, label? } }`. Every loading unit and dump needs a node with the same id |
-| `edges` | `[a, b, { ramp: true, upFrom: 'lowerNode' }?]`. Ramp segments slow loaded trucks going uphill |
-| `shovels` | `{ id, name, material: 'ore' \| 'waste', grade, label, loadSec, safePos? }`. `safePos` is where the unit trams to for a blast |
-| `dumps` | `{ id, name, short, role: 'crusher' \| 'stockpile' \| 'waste', bays, dumpSec }`. Needs one crusher and at least one waste dump |
+| `edges` | `[a, b, { ramp: true, upFrom: 'lowerNode', closed: true }?]`. Ramp segments slow loaded trucks going uphill. Closed roads (areas not yet released) are drawn but never used for haulage |
+| `shovels` | `{ id, name, material: 'ore' \| 'waste', oreClass?: 'hg' \| 'lg', grade, label, loadSec, safePos? }`. `safePos` is where the unit trams to for a blast |
+| `dumps` | `{ id, name, short, role: 'crusher' \| 'stockpile' \| 'waste', gradeClass?, bays, dumpSec }`. Needs a crusher or ore stockpile, and at least one waste dump. `gradeClass` marks a ROM finger |
 | `base` | Node id of the workshop, fuel bay and go-line |
 | `pits` | Ellipses drawn as benches: `{ cx, cy, rx, ry, floorShift?, label? }` |
+| `features`, `areas` | Map annotations only: boxes such as the plant `{ x, y, w, h, label }`, and labels such as pushbacks `{ x, y, label }` |
 | `speeds` | Optional truck speed overrides in m/s (`emptyFlat`, `loadedUpRamp`, …) |
 
 To trace a real mine plan: use the pit plan image in a drawing tool, place nodes at junctions, ramp ends, loading faces and dumps, and read off pixel coordinates. The map is a schematic, so it doesn't need to be to survey accuracy. What matters is that haul distances and cycle times are realistic.
@@ -74,6 +81,8 @@ Event types (the `at` field is minutes from the start of the shift):
 | `radio` | Use the builders in `lib.scenarioLib`, or write your own: `from`, `message`, `options[{ text, rating, feedback, effects?, severity? }]`, `timeout?`, `timeoutEffects?` |
 | `shovelDown` | `shovel`, `minutes`, `reason` |
 | `crusherDown` | `minutes`, `reason` |
+| `dumpDown` | `dump`, `minutes`, `reason`. Closes any tip, e.g. a ROM finger |
+| `shovelReady` | `shovel`, `minTrucks`, `text`. Releases a unit that started with `shovelStatus: { ID: 'commissioning' }` on the scenario |
 | `truckBreakdown` | `truck`, `minutes`, `text`, `radio?` |
 | `fuelLow` | `truck`, `minutes`, `radio?` |
 | `blast` | `shovel`, `blastIn`, `guard`, `reentry`, `radius` (the shovel needs a `safePos`) |
@@ -83,7 +92,7 @@ Event types (the `at` field is minutes from the start of the shift):
 
 Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`.
 
-Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation` (plus `…FollowUp` consequences).
+Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea` (plus `…FollowUp` consequences).
 
 ## Calibration
 

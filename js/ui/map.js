@@ -19,7 +19,7 @@
   };
 
   const SHOVEL_STATUS_COLOR = {
-    operating: COLORS.ok, down: COLORS.danger, tramming: COLORS.warn, standby: COLORS.warn, evacuated: COLORS.evac
+    operating: COLORS.ok, down: COLORS.danger, tramming: COLORS.warn, standby: COLORS.warn, evacuated: COLORS.evac, commissioning: '#8d9ba8'
   };
 
   function createMap(canvas, sim, view) {
@@ -76,9 +76,24 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (const pass of [0, 1, 2]) {
-        for (const [a, b] of P.EDGES) {
+        for (const [a, b, opts] of P.EDGES) {
           const na = P.NODES[a];
           const nb = P.NODES[b];
+          if (opts && opts.closed) {
+            // Unreleased road: thin dashed red line only.
+            if (pass !== 1) continue;
+            ctx.beginPath();
+            ctx.moveTo(sx(na.x), sy(na.y));
+            ctx.lineTo(sx(nb.x), sy(nb.y));
+            ctx.strokeStyle = COLORS.danger;
+            ctx.globalAlpha = 0.6;
+            ctx.lineWidth = Math.max(2, w * 0.35);
+            ctx.setLineDash([6, 6]);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.setLineDash([]);
+            continue;
+          }
           ctx.beginPath();
           ctx.moveTo(sx(na.x), sy(na.y));
           ctx.lineTo(sx(nb.x), sy(nb.y));
@@ -143,6 +158,22 @@
       }
     }
 
+    // Plant buildings and area labels (pushbacks, rehandle area).
+    function drawAnnotations() {
+      for (const f of P.FEATURES) {
+        roundRect(sx(f.x), sy(f.y), Math.max(40, f.w * scale), Math.max(20, f.h * scale), 5);
+        ctx.fillStyle = '#1d242b';
+        ctx.fill();
+        ctx.strokeStyle = COLORS.label;
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        text(f.label, sx(f.x) + Math.max(40, f.w * scale) / 2, sy(f.y) + Math.max(20, f.h * scale) / 2, COLORS.label, 10);
+      }
+      for (const a of P.AREAS) text(a.label, sx(a.x), sy(a.y), COLORS.label, 10.5, 'center', 0.55);
+    }
+
     function drawDumps(state) {
       for (const d of Object.values(state.dumps)) {
         const n = P.NODES[d.id];
@@ -193,7 +224,7 @@
         ctx.lineTo(x, y + r);
         ctx.lineTo(x - r, y);
         ctx.closePath();
-        ctx.fillStyle = s.material === 'waste' ? '#4a443d' : view.oreClass(s.grade) === 'hg' ? '#5a4213' : '#523017';
+        ctx.fillStyle = s.material === 'waste' ? '#4a443d' : view.shovelClass(s) === 'hg' ? '#5a4213' : '#523017';
         ctx.fill();
         ctx.lineWidth = 3;
         ctx.strokeStyle = SHOVEL_STATUS_COLOR[s.status] || COLORS.ok;
@@ -276,6 +307,7 @@
       ctx.fillRect(0, 0, w, h);
       drawPits();
       drawRoads();
+      drawAnnotations();
       drawZones(state);
       drawDumps(state);
       drawShovels(state);

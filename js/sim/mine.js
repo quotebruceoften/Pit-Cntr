@@ -6,7 +6,8 @@
  *   width, height          map extent in map units
  *   metersPerUnit          converts map units to haul distance
  *   nodes   { id: {x, y, label?} }
- *   edges   [[a, b, {ramp, upFrom}?]]   upFrom = low end of a ramp
+ *   edges   [[a, b, {ramp, upFrom, closed}?]]   upFrom = low end of a ramp;
+ *           closed = drawn on the map but not usable for haulage
  *   shovels [{id, name, material: 'ore'|'waste', grade, label, loadSec, safePos?}]
  *   dumps   [{id, name, short, role: 'crusher'|'stockpile'|'waste', bays, dumpSec}]
  *   base    node id of the workshop / fuel bay / go-line
@@ -45,6 +46,8 @@
     for (const id of Object.keys(NODES)) adjacency[id] = [];
     for (const [a, b, opts] of EDGES) {
       if (!NODES[a] || !NODES[b]) throw new Error('Road ' + a + '-' + b + ' references an unknown node');
+      // Closed roads (e.g. an area not yet released) are drawn but never routed.
+      if (opts && opts.closed) continue;
       const len = Math.hypot(NODES[a].x - NODES[b].x, NODES[a].y - NODES[b].y) * metersPerUnit;
       const info = Object.assign({ a, b, len, ramp: false, upFrom: null }, opts || {});
       edgeIndex[key(a, b)] = info;
@@ -55,7 +58,7 @@
     for (const x of SHOVELS.concat(DUMPS)) {
       if (!NODES[x.id]) throw new Error('Layout has no node for ' + x.id);
     }
-    if (!DUMPS.some((d) => d.role === 'crusher')) throw new Error('Layout needs a crusher dump');
+    if (!DUMPS.some((d) => d.role === 'crusher' || d.role === 'stockpile')) throw new Error('Layout needs a crusher or ore stockpile dump');
     if (!DUMPS.some((d) => d.role === 'waste')) throw new Error('Layout needs a waste dump');
 
     function edge(a, b) {
@@ -120,6 +123,8 @@
       METERS_PER_UNIT: metersPerUnit,
       NODES, EDGES, SHOVELS, DUMPS, BASE, SPEEDS,
       PITS: layout.pits || [],
+      FEATURES: layout.features || [],
+      AREAS: layout.areas || [],
       edge, shortestPath, routeLength, segmentSpeed, travelSeconds,
       dumpsByRole,
       crusher: () => dumpsByRole('crusher')[0],

@@ -51,6 +51,17 @@
       ticks.join('') + '</svg>';
   }
 
+  // Grade control on ROM pad fingers: which ore class went where.
+  function routingPanel(s) {
+    const rows = s.routing.byDump.map((b) => {
+      const wrong = b.gradeClass === 'hg' ? b.lg : b.hg;
+      return '<tr><td>' + esc(b.name) + ' <span class="muted small">(' + b.gradeClass.toUpperCase() + ')</span></td><td class="num">' + b.hg +
+        '</td><td class="num">' + b.lg + '</td><td class="num" style="color:' + (wrong ? 'var(--danger)' : 'var(--ok)') + '">' + wrong + '</td></tr>';
+    }).join('');
+    return '<div class="panel full"><h2>Ore routing to the ROM pad</h2><table class="data-table"><thead><tr><th>Stockpile</th><th class="num">HG loads</th><th class="num">LG loads</th><th class="num">Wrong grade</th></tr></thead><tbody>' +
+      rows + '</tbody></table><p class="muted small">Every ore load should be tipped on the finger for its grade class. Misrouted loads dilute the stockpile the rehandle controller feeds to the plant.</p></div>';
+  }
+
   function stat(value, label) {
     return '<div class="stat"><b>' + value + '</b><span>' + esc(label) + '</span></div>';
   }
@@ -75,7 +86,9 @@
     const stats = [
       stat(Math.round(ore).toLocaleString() + ' t', 'Ore mined (' + Math.round(d.production.orePct) + '% of ' + s.targets.ore.toLocaleString() + ' t)'),
       stat(Math.round(s.totals.waste).toLocaleString() + ' t', 'Waste moved (' + Math.round(d.production.wastePct) + '% of ' + s.targets.waste.toLocaleString() + ' t)'),
-      stat(s.crusher.graded ? Math.round(d.grade.inSpecPct) + '%' : '—', 'Crusher loads in blend spec'),
+      s.gradeControl === 'stockpiles'
+        ? stat(s.routing.oreTips ? Math.round(d.grade.inSpecPct) + '%' : '—', 'Ore loads to the correct ROM finger')
+        : stat(s.crusher.graded ? Math.round(d.grade.inSpecPct) + '%' : '—', 'Crusher loads in blend spec'),
       stat(Math.round(d.efficiency.utilisation * 100) + '%', 'Loading unit utilisation'),
       stat(d.efficiency.avgQueueMin.toFixed(1) + ' min', 'Avg truck queue per load'),
       stat(d.decisions.avgResponse == null ? '—' : d.decisions.avgResponse.toFixed(0) + ' s', 'Avg radio response time'),
@@ -129,7 +142,8 @@
           '<h2>Strengths</h2><div class="pill-list">' + r.strengths.map((x) => '<span class="pill">' + esc(x) + '</span>').join('') + '</div>' +
           '<h2>Development areas</h2><div class="pill-list">' + (r.development.length ? r.development.map((x) => '<span class="pill">' + esc(x) + '</span>').join('') : '<span class="muted small">None below 80</span>') + '</div>' +
           '<h2>Shift numbers</h2><div class="stat-grid">' + stats + '</div></div>' +
-        '<div class="panel full"><h2>Crusher feed blend (rolling 6 loads, ' + esc(unit) + ')</h2>' + blendChart(s) + '<p class="muted small">Green band is the ' + s.blendSpec.min + '–' + s.blendSpec.max + ' ' + esc(unit) + ' specification. Blend is only scored once every ore loading unit has been available for 20 minutes.</p></div>' +
+        (s.gradeControl === 'stockpiles' ? routingPanel(s)
+          : '<div class="panel full"><h2>Crusher feed blend (rolling 6 loads, ' + esc(unit) + ')</h2>' + blendChart(s) + '<p class="muted small">Green band is the ' + s.blendSpec.min + '–' + s.blendSpec.max + ' ' + esc(unit) + ' specification. Blend is only scored once every ore loading unit has been available for 20 minutes.</p></div>') +
         '<div class="panel full"><h2>Radio calls</h2>' + decisions + '</div>' +
         '<div class="panel"><h2>Incidents</h2>' + violations + '</div>' +
         '<div class="panel"><h2>Response to disruptions</h2>' + disruptions + '</div>' +

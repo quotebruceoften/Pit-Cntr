@@ -251,7 +251,7 @@ test('navachab: mixed fleet of 20 Komatsu HD785 (QKR) and 14 CAT 777E (Eitavelo)
     assert.deepEqual(byCls, { HD785: 20, CAT777E: 14 }, sc.id);
     assert.ok(sim.state.trucks.filter((t) => t.cls === 'CAT777E').every((t) => /Eitavelo/.test(t.owner)));
     // Both owners are on the ore units from the start.
-    for (const unit of ['EX1', 'EX2']) {
+    for (const unit of ['EX04', 'EX05']) {
       const owners = new Set(sim.state.trucks.filter((t) => t.assign.shovel === unit).map((t) => t.cls));
       assert.equal(owners.size, 2, sc.id + ' ' + unit);
     }
@@ -265,7 +265,7 @@ test('contractor authorisation: refusing parks the truck; allowing it leads to a
   const site = SITES.find((s) => s.id === 'navachab');
   const lib = require('../js/sim/library.js').scenarioLib;
   const base = site.scenarios.find((s) => s.id === 'storm');
-  const sc = Object.assign({}, base, { events: [lib.contractorAuthorisation(1, 'Eitavelo supervisor', 'EV11', 'A16 ramp'), lib.contractorAuthorisationFollowUp(20, 'EV11', 'A16 ramp')] });
+  const sc = Object.assign({}, base, { events: [lib.contractorAuthorisation(1, 'Eitavelo supervisor', 'EV44', 'main ramp'), lib.contractorAuthorisationFollowUp(20, 'EV44', 'main ramp')] });
   for (const rating of ['best', 'unsafe']) {
     const sim = engine.createSim(site, sc, { seed: 1 });
     while (sim.state.t < 70) sim.step(1, 1 / 15);
@@ -275,9 +275,68 @@ test('contractor authorisation: refusing parks the truck; allowing it leads to a
     const nearMiss = sim.state.violations.some((v) => /lost traction/.test(v.text));
     if (rating === 'best') {
       assert.ok(!nearMiss);
-      assert.ok(sim.state.trucks.find((t) => t.id === 'EV11').hold);
+      assert.ok(sim.state.trucks.find((t) => t.id === 'EV44').hold);
     } else {
       assert.ok(nearMiss);
     }
   }
+});
+
+const navachab = () => SITES.find((s) => s.id === 'navachab');
+const navScenario = (id, patch) => Object.assign({}, navachab().scenarios.find((s) => s.id === id), patch || {});
+const runNav = (sim, minutes, control) => {
+  while (!sim.state.finished && sim.state.t < minutes * 60) { if (control) control(); sim.step(1, 1 / 15); }
+};
+
+test('navachab: uses the real truck numbers, with owner prefixes to separate duplicate numbers', () => {
+  const sim = engine.createSim(navachab(), navScenario('day'), { seed: 1 });
+  const ids = sim.state.trucks.map((t) => t.id);
+  assert.equal(new Set(ids).size, 34);
+  for (const n of [16, 17, 19, 22, 25, 26, 27, 29, 33, 35, 36, 42, 43, 44, 45, 46, 47, 48, 49, 50]) assert.ok(ids.includes('HT' + n));
+  for (const n of [71, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]) assert.ok(ids.includes('EV' + n));
+});
+
+test('navachab: PB6 road is drawn but never used for haulage', () => {
+  const mine = createMine(navachab().layout);
+  assert.ok(mine.EDGES.some(([a, b, o]) => b === 'P6' && o && o.closed));
+  for (const s of mine.SHOVELS) for (const d of mine.DUMPS) {
+    assert.ok(!mine.shortestPath(s.id, d.id).includes('P6'));
+  }
+});
+
+test('navachab: EX10 starts in commissioning and must be put to work once released', () => {
+  const sc = navScenario('day', { events: [{ at: 5, type: 'shovelReady', shovel: 'EX10', minTrucks: 3 }] });
+  const sim = engine.createSim(navachab(), sc, { seed: 1 });
+  assert.equal(sim.state.shovels.EX10.status, 'commissioning');
+  runNav(sim, 6);
+  assert.equal(sim.state.shovels.EX10.status, 'operating');
+  const d = sim.state.disruptions.find((x) => x.type === 'shovelReady');
+  assert.equal(d.resolvedAt, null);
+  for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX08').slice(0, 3)) sim.assign(t.id, { shovel: 'EX10', dump: 'EWRD' });
+  runNav(sim, 7);
+  assert.ok(d.resolvedAt != null);
+});
+
+test('navachab: ore tipped on the wrong ROM finger is a grade misroute', () => {
+  const sim = engine.createSim(navachab(), navScenario('day', { events: [] }), { seed: 1 });
+  for (const t of sim.state.trucks.filter((x) => x.assign.shovel === 'EX05')) sim.assign(t.id, { dump: 'ROMH' });
+  runNav(sim, 60);
+  const s = sim.summary();
+  assert.ok(s.routing.oreTips > 0 && s.routing.correct < s.routing.oreTips);
+  assert.ok(s.violations.some((v) => v.code === 'misroute' && /LG ore on the ROM pad HG finger/.test(v.text)));
+  const r = score(s);
+  assert.ok(r.detail.grade.inSpecPct < 100);
+});
+
+test('navachab: rehandle tip closure is resolved by redirecting to the HG overflow tip', () => {
+  const sc = navScenario('day', { events: [{ at: 5, type: 'dumpDown', dump: 'ROMH', minutes: 20, reason: 'test' }] });
+  const sim = engine.createSim(navachab(), sc, { seed: 1 });
+  runNav(sim, 6);
+  const d = sim.state.disruptions.find((x) => x.type === 'dumpDown');
+  assert.equal(d.resolvedAt, null);
+  for (const t of sim.state.trucks.filter((x) => x.assign.dump === 'ROMH')) sim.assign(t.id, { dump: 'ROMX' });
+  runNav(sim, 7);
+  assert.ok(d.resolvedAt != null);
+  runNav(sim, 40);
+  assert.equal(sim.summary().violations.filter((v) => v.code === 'misroute').length, 0);
 });

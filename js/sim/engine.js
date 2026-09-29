@@ -49,7 +49,14 @@
     // just give fleet.payloadT.
     const CLASSES = site.fleet.classes || { std: { name: site.fleet.truckClass || 'Haul truck', payloadT: site.fleet.payloadT, owner: site.operator } };
     const defaultClass = Object.keys(CLASSES)[0];
-    const CRUSHER = mine.crusher().id;
+    // Grade control mode:
+    //  'blend'      trucks tip ore into the crusher; score the rolling feed blend
+    //  'stockpiles' trucks tip ore on ROM pad fingers by grade class (the plant
+    //               is fed by a separate rehandle operation); score correct routing
+    const GRADE_MODE = site.gradeControl || 'blend';
+    const CRUSHER = mine.crusher() ? mine.crusher().id : null;
+    if (GRADE_MODE === 'blend' && !CRUSHER) throw new Error('Blend grade control needs a crusher dump');
+    const oreClassOf = (shovel) => shovel.oreClass || (scenario.blend && shovel.grade >= scenario.blend.max ? 'hg' : 'lg');
     const roleOf = (dumpId) => (DUMPS.find((d) => d.id === dumpId) || {}).role;
     const rng = mulberry32(opts.seed != null ? opts.seed : (scenario.seed || 1));
     const jitter = (spread) => 1 + (rng() * 2 - 1) * spread;
@@ -92,6 +99,13 @@
         status: 'operating', lastForcedOutAt: -Infinity, until: 0, x: home.x, y: home.y, home: { x: home.x, y: home.y },
         tram: null, queue: [], serving: null, opTime: 0, busyTime: 0, hangTime: 0, loads: 0, tonnes: 0
       });
+    }
+    for (const [id, status] of Object.entries(scenario.shovelStatus || {})) {
+      const s = state.shovels[id];
+      if (!s) throw new Error('Scenario sets status for unknown unit ' + id);
+      s.status = status;
+      s.downReason = status === 'commissioning' ? 'Being assembled / commissioned' : status;
+      s.until = Infinity;
     }
     for (const def of DUMPS) {
       state.dumps[def.id] = Object.assign({}, def, {
@@ -139,8 +153,9 @@
       emit('alert', a);
     }
 
-    function violation(severity, category, text) {
+    function violation(severity, category, text, code) {
       const v = { t: state.t, severity, category, text };
+      if (code) v.code = code;
       state.violations.push(v);
       emit('violation', v);
       alert(severity === 'minor' ? 'warn' : 'danger', (category === 'safety' ? 'SAFETY: ' : 'PROCESS: ') + text);
@@ -331,7 +346,11 @@
     // ------------------------------------------------------ loading/dumping
 
     function defaultDump(shovel) {
-      return shovel.material === 'ore' ? CRUSHER : mine.wasteDump().id;
+      if (shovel.material === 'waste') return (site.wasteDumpFor && site.wasteDumpFor[shovel.id]) || mine.wasteDump().id;
+      if (GRADE_MODE === 'blend') return CRUSHER;
+      const piles = mine.dumpsByRole('stockpile');
+      const match = piles.find((d) => d.gradeClass === oreClassOf(shovel));
+      return (match || piles[0]).id;
     }
 
     function completeLoad(shovel, truck) {
@@ -367,6 +386,14 @@
         state.totals.oreCrusher += load.tonnes;
       } else if (dump.role === 'stockpile') {
         state.totals.oreRom += load.tonnes;
+        if (dump.gradeClass) {
+          const cls = oreClassOf(state.shovels[load.source]);
+          tip.oreClass = cls;
+          tip.correctFinger = cls === dump.gradeClass;
+          if (!tip.correctFinger) {
+            violation('minor', 'process', truck.id + ' tipped ' + cls.toUpperCase() + ' ore on the ' + dump.name + ' (grade misrouted).', 'misroute');
+          }
+        }
       } else {
         state.totals.oreLost += load.tonnes;
         violation('major', 'process', truck.id + ' tipped ' + load.tonnes + ' t of ore on the ' + dump.name + ' (ore loss).');
@@ -481,7 +508,7 @@
     // Leaving a shovel on standby once its blast area has reopened is a
     // controller choice and does not count.
     function forcedOut(s) {
-      if (s.status === 'down' || s.status === 'evacuated' || s.status === 'tramming') return true;
+      if (s.status === 'down' || s.status === 'evacuated' || s.status === 'tramming' || s.status === 'commissioning') return true;
       if (s.status === 'standby') return !!state.blast && state.blast.shovel === s.id && state.blast.status !== 'reopened';
       return false;
     }
@@ -674,6 +701,36 @@
             {
               resolved: () => trucksAssignedTo((tr) => tr.assign.shovel === s.id).length === 0,
               ended: () => s.status !== 'down'
+            }
+          );
+          break;
+        }
+        case 'dumpDown': {
+          const d = state.dumps[ev.dump];
+          d.status = 'down';
+          d.until = state.t + ev.minutes * 60;
+          d.downReason = ev.reason;
+          alert('danger', d.name.toUpperCase() + ' CLOSED: ' + ev.reason + '. Estimated ' + ev.minutes + ' min.');
+          addDisruption(
+            { id: 'dump-' + d.id + '-' + state.t, type: 'dumpDown', label: d.name + ' closed', start: state.t, target: 5 * 60, limit: 20 * 60 },
+            {
+              resolved: () => trucksAssignedTo((tr) => tr.assign.dump === d.id).length === 0,
+              ended: () => d.status !== 'down'
+            }
+          );
+          break;
+        }
+        case 'shovelReady': {
+          // A loading unit released mid-shift (e.g. newly commissioned).
+          const s = state.shovels[ev.shovel];
+          s.status = 'operating';
+          alert('info', ev.text || s.name + ' released for loading.');
+          const need = ev.minTrucks || 3;
+          addDisruption(
+            { id: 'ready-' + s.id + '-' + state.t, type: 'shovelReady', label: 'Put ' + s.name + ' to work', start: state.t, target: 5 * 60, limit: 20 * 60 },
+            {
+              resolved: () => trucksAssignedTo((tr) => tr.assign.shovel === s.id).length >= need,
+              ended: () => false
             }
           );
           break;
@@ -1005,7 +1062,17 @@
         practice: !!scenario.practice,
         durationMin: scenario.durationMin,
         targets: scenario.targets,
-        blendSpec: scenario.blend,
+        blendSpec: scenario.blend || null,
+        gradeControl: GRADE_MODE,
+        routing: (() => {
+          const oreTips = state.tips.filter((x) => x.correctFinger != null);
+          const byDump = mine.DUMPS.filter((d) => d.gradeClass).map((d) => {
+            const here = oreTips.filter((x) => x.dump === d.id);
+            return { id: d.id, name: d.name, gradeClass: d.gradeClass,
+              hg: here.filter((x) => x.oreClass === 'hg').length, lg: here.filter((x) => x.oreClass === 'lg').length };
+          });
+          return { oreTips: oreTips.length, correct: oreTips.filter((x) => x.correctFinger).length, byDump };
+        })(),
         totals: Object.assign({}, state.totals),
         fleet: Object.keys(CLASSES).map((id) => {
           const trucks = state.trucks.filter((tr) => tr.cls === id);
@@ -1014,6 +1081,7 @@
         }).filter((f) => f.count),
         loads,
         avgQueueMinPerLoad: loads ? state.totals.queueTime / loads / 60 : 0,
+        queueAllowanceMin: site.queueAllowanceMin || 0,
         idleTruckHours: state.totals.idleTime / 3600,
         shovels,
         crusher: {

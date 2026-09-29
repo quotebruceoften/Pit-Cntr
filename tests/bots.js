@@ -24,9 +24,10 @@ function expertController(sim, opts) {
   opts = opts || {};
   const s = sim.state;
   const weights = sim.site.planWeights;
-  const crusher = sim.mine.crusher().id;
+  const crusher = sim.mine.crusher() ? sim.mine.crusher().id : null;
   const stockpile = sim.mine.stockpile();
-  const roleOf = (id) => sim.mine.DUMPS.find((d) => d.id === id).role;
+  const stockpileMode = sim.site.gradeControl === 'stockpiles';
+  const roleOf = (id) => (sim.mine.DUMPS.find((d) => d.id === id) || {}).role;
   const answerAfter = opts.answerAfter != null ? opts.answerAfter : 5;
   let lastCheck = -Infinity;
 
@@ -52,10 +53,21 @@ function expertController(sim, opts) {
     const avail = Object.values(s.shovels)
       .filter((sh) => sh.status === 'operating' && !(blastActive && b.shovel === sh.id))
       .map((sh) => sh.id);
-    const oreDump = s.dumps[crusher].status === 'operating' || !stockpile ? crusher : stockpile.id;
-    // Waste units keep their planned waste dump (sites may have several).
-    const wasteDumpFor = (tr) => roleOf(tr.assign.dump) === 'waste' ? tr.assign.dump
-      : (sim.site.wasteDumpFor && sim.site.wasteDumpFor[tr.assign.shovel]) || sim.mine.wasteDump().id;
+    const open = (id) => s.dumps[id].status === 'operating';
+    // Right destination for a loading unit's material, avoiding closed tips.
+    const dumpFor = (unit, current) => {
+      const sh = s.shovels[unit];
+      const same = (pred) => sim.mine.DUMPS.filter(pred).map((d) => d.id);
+      if (sh.material === 'waste') {
+        if (roleOf(current) === 'waste' && open(current)) return current;
+        const planned = (sim.site.wasteDumpFor && sim.site.wasteDumpFor[unit]) || sim.mine.wasteDump().id;
+        return open(planned) ? planned : same((d) => d.role === 'waste' && open(d.id))[0] || planned;
+      }
+      if (!stockpileMode) return open(crusher) || !stockpile ? crusher : stockpile.id;
+      const planned = sim.site.oreDumpFor[unit];
+      const cls = sim.mine.DUMPS.find((d) => d.id === planned).gradeClass;
+      return open(planned) ? planned : same((d) => d.gradeClass === cls && open(d.id))[0] || planned;
+    };
 
     const released = new Set();
     for (const d of s.disruptions) if (d.type === 'available') d.label.replace('Deploy ', '').split(', ').forEach((id) => released.add(id));
@@ -74,14 +86,13 @@ function expertController(sim, opts) {
       for (const tr of movers) {
         const target = avail.slice().sort((x, y) => (want[y] - have[y]) - (want[x] - have[x]))[0];
         have[target]++;
-        const dump = s.shovels[target].material === 'ore' ? oreDump
-          : (sim.site.wasteDumpFor && sim.site.wasteDumpFor[target]) || sim.mine.wasteDump().id;
+        const dump = dumpFor(target, null);
         sim.assign(tr.id, { shovel: target, dump });
       }
       for (const tr of pool) {
         const sh = s.shovels[tr.assign.shovel];
         if (!sh) continue;
-        const dump = sh.material === 'ore' ? oreDump : wasteDumpFor(tr);
+        const dump = dumpFor(tr.assign.shovel, tr.assign.dump);
         if (tr.assign.dump !== dump) sim.assign(tr.id, { dump });
       }
     }

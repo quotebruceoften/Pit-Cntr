@@ -301,11 +301,13 @@
     text: 'Two trucks came within metres of a rear-end collision in dust (near miss) — no visibility controls in place.'
   });
 
-  // Mixed fleets: groups = [{ prefix, cls, count }]. Trucks from each group
+  // Mixed fleets: groups = [{ prefix, cls, count }] or [{ ids: [...], cls }]
+  // to use the site's real fleet numbers. Trucks from each group
   // are interleaved in proportion and then allocated to the plan in order,
   // so owners share loading units.
   function mixedFleet(groups, plan, parked) {
     const trucks = [];
+    groups = groups.map((g) => Object.assign({}, g, { count: g.ids ? g.ids.length : g.count }));
     const used = groups.map(() => 0);
     const total = groups.reduce((a, g) => a + g.count, 0);
     for (let k = 0; k < total; k++) {
@@ -318,7 +320,7 @@
       });
       const g = groups[best];
       used[best]++;
-      trucks.push({ id: g.prefix + String(used[best]).padStart(2, '0'), cls: g.cls });
+      trucks.push({ id: g.ids ? g.ids[used[best] - 1] : g.prefix + String(used[best]).padStart(2, '0'), cls: g.cls });
     }
     const planned = plan.reduce((a, p) => a + p[2], 0);
     if (planned !== total) throw new Error('Fleet plan allocates ' + planned + ' trucks but the fleet has ' + total);
@@ -376,6 +378,54 @@
     text: truck + '\'s unassessed operator lost traction and stopped against the windrow on the ' + route + ' (near miss).'
   });
 
+  // Sites with separate pit and rehandle controllers on different channels.
+  const channelDiscipline = (at, caller, pitChannel, rehandleChannel) => ({
+    at, type: 'radio', id: 'channel-discipline',
+    from: caller + ' (on ' + pitChannel + ')',
+    message: 'Pit control, ' + caller + '. I\'ve just come out of the workshop — where do you want me to go?',
+    options: [
+      { text: 'You\'re on the pit channel. Switch to ' + rehandleChannel + ' and call the rehandle controller for your instructions.', rating: 'best',
+        feedback: 'Each controller directs their own area. Sending the operator to the right channel keeps one clear line of control.' },
+      { text: 'Go and load at the ROM pad HG finger.', rating: 'poor',
+        feedback: 'Directing equipment in the rehandle controller\'s area creates conflicting instructions and they won\'t know where the unit is.' },
+      { text: 'Stand by, I\'ll find out and come back to you.', rating: 'ok',
+        feedback: 'Avoids giving a conflicting instruction, but ties up the pit channel; just redirect them to the rehandle channel.' }
+    ],
+    timeoutText: 'A rehandle operator called pit control and got no answer.'
+  });
+
+  const rehandleClosure = (at, controller, finger, alternative) => ({
+    at, type: 'radio', id: 'rehandle-closure',
+    from: controller,
+    message: 'Pit control, ' + controller + '. I need to close the ' + finger + ' tip head for about 25 minutes — the loader is cleaning up and rebuilding the windrow. Can you keep your trucks off it?',
+    options: [
+      { text: 'Copy. I\'ll redirect trucks for the ' + finger + ' to the ' + alternative + ' now and confirm when they\'re clear. Call me when it\'s open again.', rating: 'best',
+        feedback: 'Keeps haul trucks away from the loader, keeps the grade on the right stockpile and closes the loop.' },
+      { text: 'Tip them on the other grade finger for now.', rating: 'poor',
+        feedback: 'Mixing grades on the wrong finger defeats grade control on the ROM pad.' },
+      { text: 'Have the loader work around my trucks, we can\'t afford the delay.', rating: 'unsafe', severity: 'major',
+        feedback: 'Haul trucks tipping beside a loader working the tip head is a serious interaction risk.' },
+      { text: 'Can it wait until shift change?', rating: 'poor',
+        feedback: 'A damaged tip-head windrow is a safety control; the rehandle controller\'s request should be supported.' }
+    ],
+    timeoutText: 'The rehandle controller\'s request to close a tip went unanswered.'
+  });
+
+  const unreleasedArea = (at, truck, area) => ({
+    at, type: 'radio', id: 'unreleased-area',
+    from: truck + ' operator',
+    message: truck + ' here. The road through ' + area + ' looks open now — shall I take that shortcut to the waste dump? It\'ll save a couple of minutes.',
+    options: [
+      { text: 'Negative. ' + area + ' is not released for haulage — stay on the designated haul road.', rating: 'best',
+        feedback: 'Areas under preparation may lack edge bunds, have dozers and drills working, and are not on the traffic plan.' },
+      { text: 'OK, but take it slowly.', rating: 'unsafe', severity: 'major',
+        feedback: 'Routes a haul truck through an area that has not been released or inspected for haulage.' },
+      { text: 'Check with the dozer operator there first.', rating: 'poor',
+        feedback: 'Release of an area is a formal step, not something agreed on the radio between operators.' }
+    ],
+    timeoutText: 'An operator asked about using an unreleased area and got no answer.'
+  });
+
   // ------------------------------------------------------------ site registry
 
   const SITES = [];
@@ -401,7 +451,7 @@
   return {
     SITES, registerSite, getSite, formatGrade,
     scenarioLib: {
-      fleet, mixedFleet, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
+      fleet, mixedFleet, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
       lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
       geotech, nearMiss, windrow, unknownLv, waterCart,
       lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp

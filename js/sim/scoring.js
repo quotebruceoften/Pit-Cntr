@@ -20,7 +20,7 @@
     { key: 'efficiency', name: 'Fleet efficiency', weight: 0.15,
       desc: 'Matches trucks to loading units: shovel utilisation and truck queueing.' },
     { key: 'grade', name: 'Grade & process control', weight: 0.10,
-      desc: 'Keeps crusher feed blend in specification and material going to the right destination.' },
+      desc: 'Sends ore to the right place by grade (crusher blend or ROM pad finger) and keeps waste out of ore.' },
     { key: 'decisions', name: 'Radio decision making', weight: 0.15,
       desc: 'Quality and speed of instructions given in response to radio calls.' },
     { key: 'awareness', name: 'Situational awareness', weight: 0.10,
@@ -47,7 +47,10 @@
   }
 
   function scoreProduction(s) {
-    const ore = (s.totals.oreCrusher + 0.85 * s.totals.oreRom) / s.targets.ore;
+    // In blend mode ore sent to a stockpile is rehandled later, so it counts
+    // at 85%. In stockpile mode the ROM pad is the intended destination.
+    const romWeight = s.gradeControl === 'stockpiles' ? 1 : 0.85;
+    const ore = (s.totals.oreCrusher + romWeight * s.totals.oreRom) / s.targets.ore;
     const waste = s.totals.waste / s.targets.waste;
     return {
       score: 100 * (0.65 * Math.min(1, ore) + 0.35 * Math.min(1, waste)),
@@ -62,16 +65,27 @@
     for (const sh of s.shovels) { op += sh.opTime; busy += sh.busyTime; }
     const util = op > 0 ? busy / op : 0;
     const utilScore = ramp(util, 0.35, 0.85);
-    const queueScore = ramp(s.avgQueueMinPerLoad, 6, 1);
+    // Sites whose fleet is larger than the loading units can serve queue by
+    // design; queueAllowanceMin shifts the scale so only avoidable queueing counts.
+    const allow = s.queueAllowanceMin || 0;
+    const queueScore = ramp(s.avgQueueMinPerLoad, 6 + allow, 1 + allow);
     return { score: 100 * (0.6 * utilScore + 0.4 * queueScore), utilisation: util, avgQueueMin: s.avgQueueMinPerLoad };
   }
 
   function scoreGrade(s) {
-    let score = s.crusher.graded ? (100 * s.crusher.inSpec) / s.crusher.graded : 0;
-    for (const v of s.violations) {
-      if (v.category === 'process') score -= PROCESS_PENALTY[v.severity] || 0;
+    let pct;
+    if (s.gradeControl === 'stockpiles') {
+      // Share of ore loads tipped on the ROM pad finger for their grade class.
+      pct = s.routing.oreTips ? (100 * s.routing.correct) / s.routing.oreTips : 0;
+    } else {
+      pct = s.crusher.graded ? (100 * s.crusher.inSpec) / s.crusher.graded : 0;
     }
-    return { score: clamp(score, 0, 100), inSpecPct: s.crusher.graded ? (100 * s.crusher.inSpec) / s.crusher.graded : 0 };
+    let score = pct;
+    for (const v of s.violations) {
+      // Misrouted loads are already reflected in the routing percentage.
+      if (v.category === 'process' && v.code !== 'misroute') score -= PROCESS_PENALTY[v.severity] || 0;
+    }
+    return { score: clamp(score, 0, 100), inSpecPct: pct };
   }
 
   function scoreDecisions(s) {

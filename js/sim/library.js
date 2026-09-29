@@ -489,6 +489,29 @@
     timeoutText: 'An excavator operator reported poor fragmentation and got no answer.'
   });
 
+  // An ageing machine shows a warning. Stopping now costs a short planned
+  // stop; running on leads to a longer breakdown (see equipmentWarningFollowUp).
+  const equipmentWarning = (at, unit, warning) => ({
+    at, type: 'radio', id: 'equipment-warning',
+    from: unit + ' operator',
+    message: unit + ' here. I\'ve got the ' + (warning || 'hydraulic oil overheating') + ' warning again. It\'s still digging — do you want me to carry on?',
+    options: [
+      { text: 'Stop loading and park the bucket. I\'ll call maintenance to check it now and move your trucks to another unit meanwhile.', rating: 'best',
+        effects: [{ type: 'flag', key: 'warningActioned' }, { type: 'shovelDown', shovel: unit, minutes: 20, reason: 'Planned stop — maintenance checking ' + (warning || 'hydraulic overheating') }],
+        feedback: 'A short planned stop to check a repeat warning on an old machine avoids a far longer failure (and a possible fire or hose burst).' },
+      { text: 'Carry on until crib, maintenance can look at it then.', rating: 'poor',
+        feedback: 'Running an old machine through a repeat warning risks a major failure; the lost production is usually far greater.' },
+      { text: 'Just ignore it, that machine always gives warnings.', rating: 'unsafe', severity: 'minor',
+        feedback: 'Normalising warnings is how failures, hose bursts and fires happen.' }
+    ],
+    timeoutText: 'An operator reported a machine warning and got no answer.'
+  });
+
+  const equipmentWarningFollowUp = (at, unit, minutes) => ({
+    at, type: 'shovelDown', when: { flag: 'warningActioned', is: false }, shovel: unit, minutes: minutes || 60,
+    reason: 'Major hydraulic failure after the warning was ignored'
+  });
+
   // An operator asks to use a dump that has been closed.
   const closedDumpRequest = (at, truck, dumpName, reason, alternative) => ({
     at, type: 'radio', id: 'closed-dump',
@@ -530,7 +553,7 @@
   return {
     SITES, registerSite, getSite, formatGrade,
     scenarioLib: {
-      fleet, mixedFleet, fatigueAlarm, gradeControlCall, fragmentationCall, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
+      fleet, mixedFleet, fatigueAlarm, gradeControlCall, fragmentationCall, equipmentWarning, equipmentWarningFollowUp, closedDumpRequest, channelDiscipline, rehandleClosure, unreleasedArea, contractorPriority, contractorAuthorisation, contractorAuthorisationFollowUp,
       lvCrossing, fatigue, fatigueFollowUp, breakdownRadio, fuelRadio, rain, rainFollowUp,
       geotech, nearMiss, windrow, unknownLv, waterCart,
       lightningWarning, lightningFollowUp, lightningCab, dust, dustFollowUp

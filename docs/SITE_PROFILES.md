@@ -100,9 +100,9 @@ Event types (the `at` field is minutes from the start of the shift):
 | `available` | `trucks[]`, `text`. Parked trucks become available to assign |
 | `violation` | `severity`, `category`, `text`. Usually used as a follow-up with `when: { flag, is }` |
 
-Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`.
+Radio option effects: `hold`, `evacuate`, `speed`, `fuel`, `flag`, `violation`, `alert`, `shovelDown`.
 
-Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea`, `fatigueAlarm`, `gradeControlCall`, `closedDumpRequest` (plus `…FollowUp` consequences).
+Radio call builders in the library: `lvCrossing`, `fatigue`, `breakdownRadio`, `fuelRadio`, `rain`, `geotech`, `nearMiss`, `windrow`, `unknownLv`, `waterCart`, `lightningWarning`, `lightningCab`, `dust`, `contractorPriority`, `contractorAuthorisation`, `channelDiscipline`, `rehandleClosure`, `unreleasedArea`, `fatigueAlarm`, `gradeControlCall`, `closedDumpRequest`, `equipmentWarning` (plus `…FollowUp` consequences).
 
 ## Calibration
 

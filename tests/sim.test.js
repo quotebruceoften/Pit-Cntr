@@ -480,3 +480,26 @@ test('poor fragmentation slows loading at the affected unit', () => {
   };
   assert.ok(rate(withFrag) > rate(base) * 1.3);
 });
+
+test('navachab: acting on an old machine\'s warning costs a short stop; ignoring it causes a long failure', () => {
+  const lib = require('../js/sim/library.js').scenarioLib;
+  const sc = navScenario('day', { events: [lib.equipmentWarning(5, 'EX05'), lib.equipmentWarningFollowUp(25, 'EX05', 60)] });
+  const downFor = (rating) => {
+    const sim = engine.createSim(navachab(), sc, { seed: 1 });
+    runNav(sim, 5.1);
+    const call = sim.state.radio[0];
+    sim.answerRadio(call.id, call.options.find((o) => o.rating === rating).index);
+    runNav(sim, 26);
+    const s = sim.state.shovels.EX05;
+    return s.status === 'down' ? (s.until - sim.state.t) / 60 : 0;
+  };
+  assert.equal(downFor('best'), 0, 'planned 20 min stop is over by minute 26');
+  assert.ok(downFor('poor') > 50, 'ignored warning leads to a ~60 min failure');
+});
+
+test('navachab: shifts follow the site roster (day 06:00, afternoon 14:00, night 22:00)', () => {
+  const starts = Object.fromEntries(navachab().scenarios.map((s) => [s.id, s.startClockMin / 60]));
+  assert.equal(starts.day, 6);
+  assert.equal(starts.storm, 14);
+  assert.equal(starts.night, 22);
+});

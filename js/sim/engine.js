@@ -699,6 +699,8 @@
           violation(e.severity, e.category || 'safety', e.text);
         } else if (e.type === 'alert') {
           alert(e.level || 'info', e.text);
+        } else if (e.type === 'shovelDown') {
+          breakDown(state.shovels[e.shovel], e.minutes, e.reason);
         }
       }
     }
@@ -721,6 +723,28 @@
         {
           resolved: () => trucksAssignedTo((tr) => tr.assign.shovel === id).length === 0,
           ended: () => s.status !== 'evacuated'
+        }
+      );
+    }
+
+    // A loading unit stops (breakdown, or a planned stop for a warning).
+    // Parked or commissioning units are not affected.
+    function breakDown(s, minutes, reason) {
+      if (s.status === 'parked' || s.status === 'commissioning') return;
+      if (s.serving) {
+        s.queue.unshift(s.serving);
+        truckById(s.serving).phase = 'queueShovel';
+        s.serving = null;
+      }
+      s.status = 'down';
+      s.until = state.t + minutes * 60;
+      s.downReason = reason;
+      alert('danger', s.name + ' DOWN: ' + reason + '. Estimated repair ' + minutes + ' min.');
+      addDisruption(
+        { id: 'down-' + s.id + '-' + state.t, type: 'shovelDown', label: s.name + ' breakdown', start: state.t, target: 5 * 60, limit: 25 * 60 },
+        {
+          resolved: () => trucksAssignedTo((tr) => tr.assign.shovel === s.id).length === 0,
+          ended: () => s.status !== 'down'
         }
       );
     }
@@ -754,21 +778,9 @@
           if (ev.radio) issueRadio(ev.radio);
           break;
         }
-        case 'shovelDown': {
-          const s = state.shovels[ev.shovel];
-          s.status = 'down';
-          s.until = state.t + ev.minutes * 60;
-          s.downReason = ev.reason;
-          alert('danger', s.name + ' DOWN: ' + ev.reason + '. Estimated repair ' + ev.minutes + ' min.');
-          addDisruption(
-            { id: 'down-' + s.id + '-' + state.t, type: 'shovelDown', label: s.name + ' breakdown', start: state.t, target: 5 * 60, limit: 25 * 60 },
-            {
-              resolved: () => trucksAssignedTo((tr) => tr.assign.shovel === s.id).length === 0,
-              ended: () => s.status !== 'down'
-            }
-          );
+        case 'shovelDown':
+          breakDown(state.shovels[ev.shovel], ev.minutes, ev.reason);
           break;
-        }
         case 'dumpDown': {
           const d = state.dumps[ev.dump];
           d.status = 'down';

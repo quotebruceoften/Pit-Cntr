@@ -133,9 +133,9 @@
     // Labels are pushbacks; what each unit loads (ore type or waste) is its
     // face, set per scenario and changed by grade control during the shift.
     shovels: [
-      { id: 'EX03', name: 'EX03 Hitachi EX1900', material: 'waste', grade: 0, label: 'PB5', loadSec: 120, targetPerHour: 14 },
-      { id: 'EX04', name: 'EX04 Hitachi EX1200', material: 'ore', oreType: 'MCB', grade: 0, label: 'PB3', loadSec: 170, targetPerHour: 10 },
-      { id: 'EX05', name: 'EX05 Komatsu PC2000', material: 'ore', oreType: 'FWG', grade: 0, label: 'PB4', loadSec: 130, targetPerHour: 14, safePos: { x: 930, y: 1245 } },
+      { id: 'EX03', name: 'EX03 Hitachi EX1900 (old)', material: 'waste', grade: 0, label: 'PB5', loadSec: 120, targetPerHour: 14 },
+      { id: 'EX04', name: 'EX04 Hitachi EX1200 (old)', material: 'ore', oreType: 'MCB', grade: 0, label: 'PB3', loadSec: 170, targetPerHour: 10 },
+      { id: 'EX05', name: 'EX05 Komatsu PC2000 (old)', material: 'ore', oreType: 'FWG', grade: 0, label: 'PB4', loadSec: 130, targetPerHour: 14, safePos: { x: 930, y: 1245 } },
       { id: 'EX07', name: 'EX07 Komatsu PC2000', material: 'waste', grade: 0, label: 'PB4', loadSec: 130, targetPerHour: 14 },
       { id: 'EX08', name: 'EX08 Komatsu PC2000', material: 'waste', grade: 0, label: 'PB5', loadSec: 130, targetPerHour: 14 },
       { id: 'EX10', name: 'EX10 Komatsu PC2000', material: 'waste', grade: 0, label: 'PB5 (new unit)', loadSec: 130, targetPerHour: 14 },
@@ -237,6 +237,11 @@
   const routingText = 'Ore goes to the ROM finger for its ore type; waste goes to TSF Projects. HME is closed.';
   const cycleText = 'PB3 and PB4 are very deep: about 45 minutes per cycle. PB5 is 4.6 km from TSF Projects, about 26 minutes per cycle. Trucks are governed at 40 km/h, and 30 km/h down ramps.';
   const blastText = 'Drill & blast is its own department. Recent blasts have been poorly fragmented, which slows digging — expect it.';
+  const oldText = 'EX03, EX04 and EX05 are old machines and prone to breakdowns.';
+  // The mine runs 24/7 on three 8-hour shifts, with four crews rotating
+  // (21 days on, 5 off) so that one crew is always off.
+  const shiftText = (shift, times, crew, day) => shift + ' shift (' + times + '), crew ' + crew + ', day ' + day +
+    ' of a 21-day swing. The mine runs 24/7 on day, afternoon and night shifts; four crews rotate so one is always off. This assessment covers the first 3 hours of the shift.';
 
   // Starting faces differ from day to day.
   const FACES = {
@@ -294,7 +299,9 @@
       briefing: [
         roleText,
         fleetText,
+        shiftText('Day', '06:00–14:00', 'A', 4),
         runText(RUNNING.day),
+        oldText,
         'Handover note: night shift left 4 trucks on EX04, 5 on EX05 and 17 on EX08. Check whether that suits the hourly targets and today\'s ore and waste targets.',
         cycleText,
         blastText,
@@ -314,7 +321,7 @@
         L.lvCrossing(14, 'LV14 (survey)', 'the PB5 survey control point'),
         L.dust(25, 'haul road to TSF Projects'),
         { at: 30, type: 'fuelLow', truck: 'N22', minutes: 40, radio: L.fuelRadio('N22') },
-        { at: 40, type: 'shovelDown', shovel: 'EX08', minutes: 50, reason: 'Burst hydraulic hose on the boom' },
+        { at: 40, type: 'shovelDown', shovel: 'EX04', minutes: 50, reason: 'Hydraulic pump failure (old machine)' },
         L.dustFollowUp(48),
         ...faceChange(50, 'EX05', 'LGB'),
         L.contractorPriority(58, CONTRACTOR),
@@ -324,6 +331,8 @@
         L.rehandleClosure(95, REHANDLE, 'MC Blue finger', 'I\'ll move EX04\'s trucks onto another unit until it reopens'),
         ...faceChange(105, 'EX08', 'OR1'),
         L.closedDumpRequest(112, 'N29', 'HME dump', 'it has been dumped to its limit', 'TSF Projects'),
+        L.equipmentWarning(115, 'EX05'),
+        L.equipmentWarningFollowUp(135, 'EX05', 60),
         L.fatigue(120, 'N17'),
         L.fatigueFollowUp(135, 'N17'),
         ...faceChange(140, 'EX04', 'waste'),
@@ -333,16 +342,18 @@
     },
     {
       id: 'storm',
-      name: 'Summer storm & blast',
+      name: 'Afternoon shift — storm & blast',
       durationMin: 180,
-      startClockMin: 6 * 60,
+      startClockMin: 14 * 60,
       speed: 15,
       summary: 'Clear and fire a blast at EX05 in PB4 (keeping 3 units running meanwhile), deal with its poor fragmentation, keep trucks out of PB6, and run the lightning TARP.',
       briefing: [
         roleText,
         fleetText,
+        shiftText('Afternoon', '14:00–22:00', 'B', 11),
         runText(RUNNING.storm),
-        'Drill & blast will fire the PB4 bench at EX05 this morning. To clear a blast: tram EX05 to its safe position, withdraw every truck from the exclusion zone, then give the all-clear.',
+        oldText,
+        'Drill & blast will fire the PB4 bench at EX05 early this shift. To clear a blast: tram EX05 to its safe position, withdraw every truck from the exclusion zone, then give the all-clear.',
         blastText,
         'Thunderstorms are forecast for the afternoon. Follow the site lightning TARP.',
         cycleText,
@@ -356,7 +367,7 @@
       faces: FACES.storm,
       fleet: fleet({ EX04: 8, EX05: 11, EX03: 7 }, FACES.storm),
       events: [
-        { at: 0, type: 'alert', level: 'info', text: 'Shift started. Blast planned at EX05 (PB4) this morning; storms forecast later.' },
+        { at: 0, type: 'alert', level: 'info', text: 'Afternoon shift started. Blast planned at EX05 (PB4) early this shift; thunderstorms building.' },
         { at: 10, type: 'blast', shovel: 'EX05', blastIn: 35, guard: 10, reentry: 20, radius: 260 },
         L.lvCrossing(20, 'LV21 (shotfirer)', 'the explosives magazine road'),
         L.contractorAuthorisation(28, CONTRACTOR, 'E44', 'main ramp'),
@@ -372,7 +383,7 @@
         { at: 115, type: 'fuelLow', truck: 'N45', minutes: 40, radio: L.fuelRadio('N45') },
         ...faceChange(125, 'EX04', 'MCR'),
         L.rainFollowUp(130),
-        { at: 145, type: 'shovelDown', shovel: 'EX03', minutes: 25, reason: 'Hydraulic hose failure' },
+        { at: 145, type: 'shovelDown', shovel: 'EX03', minutes: 25, reason: 'Hydraulic hose failure (old machine)' },
         ...faceChange(150, 'EX05', 'waste'),
         L.fatigue(160, 'E49'),
         L.fatigueFollowUp(172, 'E49')
@@ -382,13 +393,15 @@
       id: 'night',
       name: 'Night shift — high pressure',
       durationMin: 180,
-      startClockMin: 18 * 60,
+      startClockMin: 22 * 60,
       speed: 15,
       summary: 'Overlapping critical events at night: a slope radar alarm on the PB4 wall, two breakdowns needing a parked unit started, poor fragmentation, a fatigue monitoring alert, face changes and an unknown vehicle.',
       briefing: [
         roleText,
         fleetText,
+        shiftText('Night', '22:00–06:00', 'D', 19),
         runText(RUNNING.night),
+        oldText + ' Late in a 21-day swing, fatigue is a real risk tonight.',
         'N49 and N50 are parked at the go-line while their operators finish pre-start. You will be told when they are available.',
         'EX10 is still being commissioned in the workshop. Remember the geotechnical TARP: withdraw first, investigate second.',
         cycleText,
@@ -406,7 +419,7 @@
         { at: 0, type: 'alert', level: 'info', text: 'Night shift started. N49 and N50 parked at the go-line awaiting operators.' },
         { at: 10, type: 'available', trucks: ['N49', 'N50'], text: 'Operators for N49 and N50 have finished pre-start and are ready for assignment.' },
         L.geotech(20, 'EX07'),
-        { at: 35, type: 'shovelDown', shovel: 'EX04', minutes: 25, reason: 'Hydraulic pump fault' },
+        { at: 35, type: 'shovelDown', shovel: 'EX04', minutes: 25, reason: 'Hydraulic pump fault (old machine)' },
         { at: 50, type: 'truckBreakdown', truck: 'N26', minutes: 30, text: 'N26 stopped on the main ramp — electrical fault.', radio: L.breakdownRadio('N26', 'main ramp') },
         ...faceChange(60, 'NEX14002', 'PHG'),
         { at: 70, type: 'fuelLow', truck: 'N36', minutes: 40, radio: L.fuelRadio('N36') },
@@ -415,7 +428,7 @@
         ...faceChange(100, 'EX04', 'OR2'),
         L.fatigueAlarm(110, 'E45'),
         L.fatigueFollowUp(122, 'E45'),
-        { at: 130, type: 'shovelDown', shovel: 'NEX14002', minutes: 30, reason: 'Bucket tooth lost — searching the muckpile' },
+        { at: 130, type: 'shovelDown', shovel: 'EX04', minutes: 30, reason: 'Same hydraulic pump fault again (old machine)' },
         ...faceChange(140, 'EX04', 'waste'),
         L.windrow(150, 'TSF Projects', 'Dozer DZ2')
       ]
@@ -425,9 +438,9 @@
   // Shift targets, calibrated against the reference (expert) controller.
   const TARGETS = {
     practice: { ore: 950, waste: 620 },
-    day: { ore: 5150, waste: 1400 },
+    day: { ore: 4450, waste: 2300 },
     storm: { ore: 2700, waste: 4100 },
-    night: { ore: 3850, waste: 3100 }
+    night: { ore: 4200, waste: 2900 }
   };
   for (const sc of scenarios) {
     sc.targets = TARGETS[sc.id];
@@ -465,7 +478,8 @@
     // Usually only 3 units run at a time because there are not enough trucks.
     runUnits: 3,
     // Order in which the reference controller starts a parked unit.
-    startOrder: ['EX08', 'EX03', 'EX07', 'NEX14002', 'EX05', 'EX04'],
+    // Newer units first: EX03, EX04 and EX05 are old and prone to breakdowns.
+    startOrder: ['EX08', 'EX07', 'NEX14002', 'EX03', 'EX05', 'EX04'],
     // Trucks per unit for a balanced plan (~45 min PB3/PB4 and ~26 min PB5 cycles
     // against the hourly targets); the reference controller uses these weights.
     planWeights: { EX03: 7, EX04: 8, EX05: 11, EX07: 11, EX08: 7, EX10: 7, NEX14002: 8 },

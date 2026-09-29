@@ -99,22 +99,23 @@
   });
 
   const edges = [
-    // Road lengths (lengthM) are set so PB3/PB4 cycles are about 45 min and
-    // PB5 about 26 min at the governed speeds. Haul ramps are ~10% gradient
-    // (pit walls are 20-30°, not modelled), so ramp length implies depth:
-    // PB3/PB4 ~5.6 km of ramp ≈ 560 m, PB5 ~2.6 km ≈ 265 m (to confirm).
+    // Road lengths (lengthM): PB5 to TSF Projects is 4.6 km (confirmed) with a
+    // 26 min cycle. PB3/PB4 distances are scaled from it at the same average
+    // speed (same ~57% ramp share): a 45 min cycle gives ~8.4-8.6 km one way.
+    // Haul ramps are ~10% (pit walls 20-30°, not modelled), so ~4.8 km of ramp
+    // puts PB3/PB4 about 480 m below the ramp top and PB5 (2.6 km) about 265 m.
     ['RP', 'J1', { lengthM: 300 }], ['LGA', 'J1', { lengthM: 1300 }],
     ['J1', 'J2', { lengthM: 800 }], ['J2', 'WS', { lengthM: 400 }], ['J2', 'J3', { lengthM: 500 }],
     ['J3', 'TSF', { lengthM: 1010 }], ['J3', 'J6', { lengthM: 600 }], ['J6', 'HME', { lengthM: 600 }],
     ['J2', 'R1', { lengthM: 300 }],
     ['R1', 'R2', { ramp: true, upFrom: 'R2', lengthM: 2000 }],
-    ['R2', 'R3', { ramp: true, upFrom: 'R3', lengthM: 1700 }],
-    ['R3', 'MF', { ramp: true, upFrom: 'MF', lengthM: 1900 }],
+    ['R2', 'R3', { ramp: true, upFrom: 'R3', lengthM: 1400 }],
+    ['R3', 'MF', { ramp: true, upFrom: 'MF', lengthM: 1400 }],
     // PB5 bench ramp; PB5 face to TSF Projects is 4.6 km (confirmed).
     ['R2', 'J7', { ramp: true, upFrom: 'J7', lengthM: 640 }],
     ['J7', 'EX03', { lengthM: 150 }], ['J7', 'EX08', { lengthM: 150 }], ['J7', 'EX10', { lengthM: 150 }],
-    ['R3', 'W1', { ramp: true, upFrom: 'W1', lengthM: 1950 }], ['W1', 'EX05', { lengthM: 250 }], ['W1', 'EX07', { lengthM: 250 }],
-    ['MF', 'EX04', { lengthM: 300 }], ['MF', 'NEX14002', { lengthM: 300 }],
+    ['R3', 'W1', { ramp: true, upFrom: 'W1', lengthM: 1400 }], ['W1', 'EX05', { lengthM: 2000 }], ['W1', 'EX07', { lengthM: 2000 }],
+    ['MF', 'EX04', { lengthM: 2000 }], ['MF', 'NEX14002', { lengthM: 2000 }],
     // PB6 access: drawn but closed to haulage until PB6 is released.
     ['J1', 'P6', { closed: true }]
   ];
@@ -424,9 +425,9 @@
   // Shift targets, calibrated against the reference (expert) controller.
   const TARGETS = {
     practice: { ore: 950, waste: 620 },
-    day: { ore: 5300, waste: 1400 },
-    storm: { ore: 2900, waste: 4100 },
-    night: { ore: 3850, waste: 3450 }
+    day: { ore: 5150, waste: 1400 },
+    storm: { ore: 2700, waste: 4100 },
+    night: { ore: 3850, waste: 3100 }
   };
   for (const sc of scenarios) {
     sc.targets = TARGETS[sc.id];

@@ -456,6 +456,14 @@ test('navachab: payloads are 90-100 t (HD785) and 80-90 t (CAT 777E)', () => {
   }
 });
 
+test('navachab: PB3/PB4 hauls are scaled from PB5 (4.6 km / 26 min) to ~8.4-8.6 km / 45 min', () => {
+  const mine = createMine(navachab().layout);
+  for (const [unit, dump] of [['EX04', 'MCB'], ['EX05', 'FWG'], ['EX07', 'TSF'], ['NEX14002', 'MCR']]) {
+    const km = mine.routeLength(mine.shortestPath(unit, dump)) / 1000;
+    assert.ok(km > 8.3 && km < 8.7, unit + ' to ' + dump + ' ' + km.toFixed(2) + ' km');
+  }
+});
+
 test('navachab: PB5 is 4.6 km from TSF Projects', () => {
   const mine = createMine(navachab().layout);
   assert.equal(Math.round(mine.routeLength(mine.shortestPath('EX03', 'TSF'))), 4600);
